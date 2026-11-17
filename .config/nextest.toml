@@ -1,2 +1,7 @@
 # nextest runs every test at once across the binaries (.github/workflows/test.yml). A test that MEASURES the machine (the CPU time an idle seat uses, `idle_churn_1143`) cannot share it and must take every slot
 # (`threads-required = 'num-cpus'` in an override for its binary). That test starts the seat on babyseat's packs, so it is in tests/babyseat/ (not built here); the override goes back with it.
+
+# A test that compares how long something takes under two loads (a cost ratio) cannot share the machine either: it failed once on a busy macOS runner (15 ms against 188 ms) and passed on its twin run.
+[[profile.default.overrides]]
+filter = 'binary(retire_delete_1143)'
+threads-required = 'num-cpus'
