@@ -9,6 +9,9 @@ name: binaries
 on:
   workflow_dispatch:
   workflow_call:
+  pull_request:
+    paths:
+      - .github/workflows/binaries.yml   # a change to this file builds all six targets: nothing else would try it before a release
 
 permissions:
   contents: read
