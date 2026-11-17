@@ -1,0 +1,110 @@
+name: binaries
+
+# The release binaries: `cliffvm` and `graphlink-bridge` built for each platform and packed as `cliffvm-<version>-<target>.tar.gz` with its `.sha256` (bin/, LICENSE, VERSION, MANIFEST.sha256: a sha256 per file but
+# itself), smoke-tested from the unpacked folder alone, and uploaded as workflow artifacts (`dist-<target>`). It PUBLISHES NOTHING: publish.yml calls it before it publishes the crate and attaches the tarballs
+# to the GitHub release afterwards. By hand: `gh workflow run binaries.yml --ref <branch>`.
+#
+# Platforms: macOS arm64 and x86_64 (the x86_64 one is cross-built on Apple silicon and smoke-tested under Rosetta), Linux x86_64 and aarch64 on glibc (built inside manylinux_2_28 containers, so the glibc
+# floor is 2.28) and on musl (static: Alpine, Home Assistant's container). Windows: none.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  binary:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos-arm64,        os: macos-latest,        target: aarch64-apple-darwin,       smoke: "" }
+          - { name: macos-x86_64,       os: macos-latest,        target: x86_64-apple-darwin,        smoke: "arch -x86_64", rosetta: true }
+          - { name: linux-x86_64,       os: ubuntu-22.04,        target: x86_64-unknown-linux-gnu,   smoke: "", container: "quay.io/pypa/manylinux_2_28_x86_64" }
+          - { name: linux-aarch64,      os: ubuntu-24.04-arm,    target: aarch64-unknown-linux-gnu,  smoke: "", container: "quay.io/pypa/manylinux_2_28_aarch64" }
+          - { name: linux-musl-x86_64,  os: ubuntu-22.04,        target: x86_64-unknown-linux-musl,  smoke: "", musl: true }
+          - { name: linux-musl-aarch64, os: ubuntu-24.04-arm,    target: aarch64-unknown-linux-musl, smoke: "", musl: true }
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"        # the oldest macOS the binary runs on
+      CC_x86_64_unknown_linux_musl: musl-gcc  # the C compiler of the bundled SQLite and of ring on the musl rows
+      CC_aarch64_unknown_linux_musl: musl-gcc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: the version
+        run: |
+          VER=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          [ -n "$VER" ] || { echo "no version in Cargo.toml"; exit 1; }
+          echo "VER=$VER" >> "$GITHUB_ENV"
+
+      - name: musl toolchain
+        if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Rosetta (to run the x86_64 binary on Apple silicon; the download is retried: it fails now and then)
+        if: matrix.rosetta
+        run: |
+          for i in 1 2 3 4; do
+            sudo softwareupdate --install-rosetta --agree-to-license && exit 0
+            echo "Rosetta install failed (attempt $i)"; sleep 20
+          done
+          exit 1
+
+      - name: build
+        run: cargo build --release --no-default-features --features bin --target "${{ matrix.target }}"
+
+      - name: pack
+        run: |
+          set -e
+          sum() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+          name="cliffvm-$VER-${{ matrix.target }}"
+          rm -rf "dist/$name"; mkdir -p "dist/$name/bin"
+          cp "target/${{ matrix.target }}/release/cliffvm" "target/${{ matrix.target }}/release/graphlink-bridge" "dist/$name/bin/"
+          chmod 755 "dist/$name/bin/"*
+          cp LICENSE "dist/$name/LICENSE"
+          printf '%s\n' "$VER" > "dist/$name/VERSION"
+          (cd "dist/$name" && find . -type f ! -name MANIFEST.sha256 | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r f; do sum "$f"; done > MANIFEST.sha256)
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          echo "NAME=$name" >> "$GITHUB_ENV"
+
+      - name: "what the binary needs (information)"
+        run: |
+          file "dist/$NAME/bin/cliffvm" || true
+          if [ "$(uname)" = Linux ]; then
+            (ldd "dist/$NAME/bin/cliffvm" || true)
+            objdump -T "dist/$NAME/bin/cliffvm" 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 || true
+          else
+            otool -l "dist/$NAME/bin/cliffvm" | grep -A3 LC_BUILD_VERSION || true
+          fi
+
+      - name: "smoke test (the unpacked tarball alone: the manifest checks out and --version says the version)"
+        run: |
+          set -e
+          sum() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+          rm -rf smoke && mkdir smoke && tar -C smoke -xzf "dist/$NAME.tar.gz"
+          (cd "smoke/$NAME" && while read -r h f; do [ "$(sum "$f" | cut -d' ' -f1)" = "$h" ] || { echo "MANIFEST mismatch: $f"; exit 1; }; done < MANIFEST.sha256)
+          got=$(${{ matrix.smoke }} "smoke/$NAME/bin/cliffvm" --version)
+          [ "$got" = "cliffvm $VER" ] || { echo "--version said '$got', expected 'cliffvm $VER'"; exit 1; }
+          echo "$got"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: |
+            dist/cliffvm-${{ env.VER }}-${{ matrix.target }}.tar.gz
+            dist/cliffvm-${{ env.VER }}-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14

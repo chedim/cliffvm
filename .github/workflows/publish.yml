@@ -1,6 +1,7 @@
 name: publish
 
-# A merge into the branch `release` publishes: the crate goes to crates.io and a GitHub release `v<version>` is made, in one run (a release made by a workflow does not start another workflow).
+# A merge into the branch `release` publishes: the binaries are built for every platform first (binaries.yml), then the crate goes to crates.io and a GitHub release `v<version>` is made with the binaries attached,
+# in one run (a release made by a workflow does not start another workflow). A binary that does not build stops the run BEFORE the irreversible crates.io publish.
 # The version is `version` in Cargo.toml.
 #   1. bump the version, merge it into main
 #   2. merge main into `release`: this workflow checks, tests, publishes and tags
@@ -19,9 +20,35 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo publish --dry-run
 
-  publish:
+  plan:
     if: github.event_name == 'push' && github.ref == 'refs/heads/release'
     needs: dry-run
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      skip: ${{ steps.v.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: the version, and whether it is already released
+        id: v
+        run: |
+          set -e
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::v$version is already released: nothing is published (bump the version to release)"
+          fi
+
+  binaries:
+    needs: plan
+    if: needs.plan.outputs.skip != 'true'
+    uses: ./.github/workflows/binaries.yml
+
+  publish:
+    needs: [plan, binaries]
+    if: needs.plan.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write   # the tag and the release
@@ -34,30 +61,21 @@ jobs:
           python-version: "3.13"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: the version, and whether it is already released
-        id: v
-        run: |
-          set -e
-          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null 2>&1; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::v$version is already released: nothing is published (bump the version to release)"
-          fi
-      - if: steps.v.outputs.skip != 'true'
-        uses: taiki-e/install-action@nextest
-      - if: steps.v.outputs.skip != 'true'
-        run: cargo nextest run --release --no-default-features --features bin --no-fail-fast
+      - uses: taiki-e/install-action@nextest
+      - run: cargo nextest run --release --no-default-features --features bin --no-fail-fast
       - name: crates.io
-        if: steps.v.outputs.skip != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           [ -n "$CARGO_REGISTRY_TOKEN" ] || { echo "::error::the repository secret CARGO_REGISTRY_TOKEN is not set"; exit 1; }
           cargo publish
-      - name: the GitHub release
-        if: steps.v.outputs.skip != 'true'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: the GitHub release, with the binaries
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.v.outputs.version }}
-        run: gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes
