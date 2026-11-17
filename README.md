@@ -20,3 +20,7 @@ cargo build --release --no-default-features --features bin     # the seat: targe
 The browser build is `--no-default-features --features wasm` (`build-web.sh`; today it writes into babyseat's page folder).
 
 License: MIT.
+
+## Releases
+
+The version is `version` in `Cargo.toml` (0.1.0 is the first on crates.io: this crate has its own line, apart from babyseat's). A release is: bump it, merge into `main`, then merge `main` into the branch `release`. `.github/workflows/publish.yml` then runs the tests, publishes `cliffvm` to crates.io and makes the GitHub release `v<version>` (a push to `release` whose version is already tagged publishes nothing). It needs the repository secret `CARGO_REGISTRY_TOKEN`. On every other push and on pull requests the same workflow runs `cargo publish --dry-run`: it packages and builds the crate as crates.io would receive it and uploads nothing. Publishing to crates.io cannot be undone (a version can be yanked, never deleted): creating the branch `release` the first time publishes the version `main` has then.

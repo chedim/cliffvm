@@ -1,0 +1,63 @@
+name: publish
+
+# A merge into the branch `release` publishes: the crate goes to crates.io and a GitHub release `v<version>` is made, in one run (a release made by a workflow does not start another workflow).
+# The version is `version` in Cargo.toml.
+#   1. bump the version, merge it into main
+#   2. merge main into `release`: this workflow checks, tests, publishes and tags
+# A push to `release` whose version already has its tag publishes nothing (a notice says so): a fix that is not a release can be merged there without a bump. Needs the repository secret
+# CARGO_REGISTRY_TOKEN. On every other push and on pull requests only the dry run runs: it packages and builds the crate as crates.io would receive it, and uploads nothing.
+on:
+  push:
+  pull_request:
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo publish --dry-run
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
+    needs: dry-run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # the tag and the release
+    concurrency:
+      group: publish    # two merges into `release` do not publish at once
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5   # some tests use a system python3 as a fake `claude` and an http.server
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: the version, and whether it is already released
+        id: v
+        run: |
+          set -e
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::v$version is already released: nothing is published (bump the version to release)"
+          fi
+      - if: steps.v.outputs.skip != 'true'
+        uses: taiki-e/install-action@nextest
+      - if: steps.v.outputs.skip != 'true'
+        run: cargo nextest run --release --no-default-features --features bin --no-fail-fast
+      - name: crates.io
+        if: steps.v.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          [ -n "$CARGO_REGISTRY_TOKEN" ] || { echo "::error::the repository secret CARGO_REGISTRY_TOKEN is not set"; exit 1; }
+          cargo publish
+      - name: the GitHub release
+        if: steps.v.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes
