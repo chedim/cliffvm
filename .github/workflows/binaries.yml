@@ -56,7 +56,7 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Rosetta (to run the x86_64 binary on Apple silicon; the download is retried: it fails now and then)
+      - name: "Rosetta (to run the x86_64 binary on Apple silicon; the download is retried because it fails now and then)"
         if: matrix.rosetta
         run: |
           for i in 1 2 3 4; do
