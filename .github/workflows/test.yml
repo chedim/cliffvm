@@ -1,0 +1,24 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cargo:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5   # some tests use a system python3 as a fake `claude` and an http.server
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # nextest runs every test as its own process, all at once; the profile `standalone` leaves out the test binaries that need babyseat's packs (.config/nextest.toml)
+      - uses: taiki-e/install-action@nextest
+      - run: cargo nextest run --release --no-default-features --features bin --no-fail-fast --profile standalone
+      - run: cargo test --release --no-default-features --features bin --doc

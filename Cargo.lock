@@ -177,6 +177,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
+name = "cliffvm"
+version = "0.7.62"
+dependencies = [
+ "bytemuck",
+ "graphlink-auth",
+ "graphlink-bridge",
+ "graphlink-core",
+ "graphlink-net",
+ "graphlink-shm",
+ "libc",
+ "objc2",
+ "objc2-foundation",
+ "objc2-metal",
+ "pollster",
+ "rcgen",
+ "rusqlite",
+ "rustls",
+ "serde_json",
+ "unicode-segmentation",
+ "wasm-bindgen",
+ "webpki-roots",
+ "wgpu",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -371,16 +396,18 @@ dependencies = [
 
 [[package]]
 name = "graphlink-auth"
-version = "0.0.1"
-source = "git+https://github.com/chedim/graphlink?rev=0de0a301bf54fbee5bae923620d2d70c02b9408c#0de0a301bf54fbee5bae923620d2d70c02b9408c"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f62f55f750cedd33bb0b6181e2b9d86b05f3d0e9ff569aafd290b524150ea346"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "graphlink-bridge"
-version = "0.0.1"
-source = "git+https://github.com/chedim/graphlink?rev=0de0a301bf54fbee5bae923620d2d70c02b9408c#0de0a301bf54fbee5bae923620d2d70c02b9408c"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f1b98f44e398cd5c62768526edb73bf80eda3b3b72bdf69a02cb1b2c62ee99d"
 dependencies = [
  "graphlink-auth",
  "graphlink-core",
@@ -391,16 +418,18 @@ dependencies = [
 
 [[package]]
 name = "graphlink-core"
-version = "0.0.1"
-source = "git+https://github.com/chedim/graphlink?rev=0de0a301bf54fbee5bae923620d2d70c02b9408c#0de0a301bf54fbee5bae923620d2d70c02b9408c"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6f0498906261101e7af15d5239f5747b60edd77191cf5bca03452c13339f213"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "graphlink-net"
-version = "0.0.1"
-source = "git+https://github.com/chedim/graphlink?rev=0de0a301bf54fbee5bae923620d2d70c02b9408c#0de0a301bf54fbee5bae923620d2d70c02b9408c"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "496cde92e75d73090d08b5ae5b82d46d55d48b9a0390c5ad99d810aefa7284d8"
 dependencies = [
  "graphlink-core",
  "rcgen",
@@ -410,8 +439,9 @@ dependencies = [
 
 [[package]]
 name = "graphlink-shm"
-version = "0.0.1"
-source = "git+https://github.com/chedim/graphlink?rev=0de0a301bf54fbee5bae923620d2d70c02b9408c#0de0a301bf54fbee5bae923620d2d70c02b9408c"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cc41bfb16918e4c847a7a086e56def8b21534a0c2f376f49f600d49654168a7"
 dependencies = [
  "graphlink-core",
  "serde_json",
@@ -598,31 +628,6 @@ name = "log"
 version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
-
-[[package]]
-name = "membrane_vm"
-version = "0.7.62"
-dependencies = [
- "bytemuck",
- "graphlink-auth",
- "graphlink-bridge",
- "graphlink-core",
- "graphlink-net",
- "graphlink-shm",
- "libc",
- "objc2",
- "objc2-foundation",
- "objc2-metal",
- "pollster",
- "rcgen",
- "rusqlite",
- "rustls",
- "serde_json",
- "unicode-segmentation",
- "wasm-bindgen",
- "webpki-roots",
- "wgpu",
-]
 
 [[package]]
 name = "memchr"
