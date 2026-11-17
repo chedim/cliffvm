@@ -37,9 +37,9 @@ fn db(d: &std::path::Path) -> std::path::PathBuf {
         let body = json!({"cls": "Config", "props": props});
         c.execute("INSERT OR REPLACE INTO c_field (k, body, cls) VALUES (?1, ?2, 'Config')", (k, body.to_string())).unwrap();
     };
-    put("membrane::Config:voice:in:dmitrii-chechetkin", json!({"person": "Dmitrii Chechetkin", "on": true, "mode": "addressed", "device": "phone", "session": "ses_1",
+    put("membrane::Config:voice:in:alice", json!({"person": "Alice", "on": true, "mode": "addressed", "device": "phone", "session": "ses_1",
         "heard": [{"ts": 1.0, "text": "hey memo", "session": "ses_1"}], "last_heard": "hey memo"}));
-    put("membrane::Config:voice:out:dmitrii-chechetkin", json!({"person": "Dmitrii Chechetkin", "on": false, "device": "phone", "said": [{"ts": 2.0, "text": "hello"}]}));
+    put("membrane::Config:voice:out:alice", json!({"person": "Alice", "on": false, "device": "phone", "said": [{"ts": 2.0, "text": "hello"}]}));
     put("membrane::Config:voice:in:admin", json!({"on": true, "mode": "ptt"}));
     for (k, p) in voice_ents() { put(k, p); }
     put("membrane::Config:voice:in:old-one", json!({"person": "Old One", "on": false}));                      // made before the kind stamp
@@ -116,7 +116,7 @@ fn ask_with(d: &std::path::Path, path: &str, body: &str, who: Option<&str>, late
 #[test]
 fn the_voice_read_is_the_persons_two_entities_state_and_rings() {
     let d = dir();
-    let r = ask(&d, "/membrane/voice", "{}", Some("Dmitrii Chechetkin"));
+    let r = ask(&d, "/membrane/voice", "{}", Some("Alice"));
     assert_eq!(r["status"], 200, "{r}");
     assert_eq!(r["body"], json!({"ok": true,
         "in": {"on": true, "mode": "addressed", "device": "phone", "session": "ses_1", "log": [{"ts": 1.0, "text": "hey memo", "session": "ses_1"}]},
