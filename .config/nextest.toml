@@ -1,6 +1,2 @@
-# nextest runs every test at once across the binaries (.github/workflows/test.yml). A test that MEASURES the machine (the CPU time an idle seat uses) cannot share it: it takes every slot, so nothing else runs
-# while it does. Only tests that measure CPU time belong here; tests with a wall-clock bound have so far passed alongside the rest.
-[[profile.default.overrides]]
-filter = 'binary(idle_churn_1143)'
-threads-required = 'num-cpus'
-
+# nextest runs every test at once across the binaries (.github/workflows/test.yml). A test that MEASURES the machine (the CPU time an idle seat uses, `idle_churn_1143`) cannot share it and must take every slot
+# (`threads-required = 'num-cpus'` in an override for its binary). That test starts the seat on babyseat's packs, so it is in tests/babyseat/ (not built here); the override goes back with it.
