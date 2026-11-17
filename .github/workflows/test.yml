@@ -18,7 +18,7 @@ jobs:
           python-version: "3.13"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # nextest runs every test as its own process, all at once; the profile `standalone` leaves out the test binaries that need babyseat's packs (.config/nextest.toml)
+      # nextest runs every test as its own process, all at once. The tests that need babyseat's packs are in tests/babyseat/, which cargo does not build (tests/babyseat/README.md)
       - uses: taiki-e/install-action@nextest
-      - run: cargo nextest run --release --no-default-features --features bin --no-fail-fast --profile standalone
+      - run: cargo nextest run --release --no-default-features --features bin --no-fail-fast
       - run: cargo test --release --no-default-features --features bin --doc
