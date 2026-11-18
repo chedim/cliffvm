@@ -2,7 +2,7 @@
 //! null = not initialised / absent / not applicable (keeps its `why`); Error = a failure, carries its reason (and its remedy, as text);
 //! `x == None` is False for an Error; an Error PROPAGATES; old routes see it as a plain null; the check is `x is Error`.
 //! Round 1: the `is` grammar, the value (`V::Error`), `kind`, `why`, `to_json`, `py_eq` against None.
-use membrane_vm::expr::{eval, parse, parse_block, py_eq, to_json, truthy, World, V};
+use cliffvm::expr::{eval, parse, parse_block, py_eq, to_json, truthy, World, V};
 use std::collections::HashMap;
 
 /// a world with entities `Trip:a` (classes Trip, Place), `Place:b` (class Place) and `Box:c` (no Trip)
@@ -99,11 +99,11 @@ fn is_that_cannot_be_read_is_a_parse_error() {
 
 #[test]
 fn the_name_error_is_reserved_as_a_kind() {
-    assert!(membrane_vm::expr::RESERVED.contains(&"Error"));
-    let local = membrane_vm::syntax::parse_full("PACK p 1\nA.x getter:\n  Error = 1\n  Error\n").err().unwrap_or_default();
+    assert!(cliffvm::expr::RESERVED.contains(&"Error"));
+    let local = cliffvm::syntax::parse_full("PACK p 1\nA.x getter:\n  Error = 1\n  Error\n").err().unwrap_or_default();
     assert!(local.contains("reserved"), "a local may not be called Error: {local}");
     for pack in ["PACK p 1\nError.x getter: 1\n", "PACK p 1\nError.x on-setter s:\n  ALWAYS:\n    this.y = 1\n", "PACK p 1\nRESIDENT Error\n", "PACK p 1\nVIRTUAL error\n"] {
-        let e = membrane_vm::syntax::parse_full(pack).err().unwrap_or_else(|| panic!("{pack:?} loaded"));
+        let e = cliffvm::syntax::parse_full(pack).err().unwrap_or_else(|| panic!("{pack:?} loaded"));
         assert!(e.contains("Error") && e.contains("reserved"), "{pack:?}: {e}");
     }
 }

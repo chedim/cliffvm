@@ -1,9 +1,9 @@
 //! Time decides no value (operator 2026-11-13; before it, a getter or setter whose SELF time passed a 10 ms allowance was a reasoned null).
 //! The former allowance is now only the `slow` threshold of `stats` (a dial, default 10 ms). The clock is injected, so nothing sleeps.
-use membrane_vm::expr;
-use membrane_vm::fields::Fields;
-use membrane_vm::syntax::parse_full;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::expr;
+use cliffvm::fields::Fields;
+use cliffvm::syntax::parse_full;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 use std::cell::Cell;
 

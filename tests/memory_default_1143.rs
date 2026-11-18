@@ -1,7 +1,7 @@
 //! The launcher's memory default (operator 2026-11-14): when no boot fact names a memory budget, the seat aims at 10% of the machine's memory (a container's limit
 //! when it is lower), a batch of 200 and a hard line at 90% of the budget, so the VM's own eviction (host.rs `evict_under_pressure`) is on out of the box. A fact
 //! given by the operator always wins, per fact; a machine whose memory cannot be read gets no default (as before: nothing is evicted).
-use membrane_vm::host::{physical_memory_bytes, MemoryConfig};
+use cliffvm::host::{physical_memory_bytes, MemoryConfig};
 
 const GIB: u64 = 1 << 30;
 

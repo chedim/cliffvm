@@ -2,9 +2,9 @@
 //! A cause->effect pair seen in one chain defines a copy and a literal candidate (each charged one write); the cause
 //! seen again fires them (charged); a later matching write in the chain refunds 2x; a proposal on a granted path writes
 //! live; a loser is pruned; asleep nothing is learned. The whole-field checksum (FNV-1a) is stable and sensitive.
-use membrane_vm::fields::Fields;
-use membrane_vm::learn::{Learner, CLASS, WRITE_COST as C};
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::learn::{Learner, CLASS, WRITE_COST as C};
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Map, Value as J};
 
 struct H;

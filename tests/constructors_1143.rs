@@ -4,10 +4,10 @@
 //! is idempotent: an entity that exists is not created again and a property that already has a value is not overwritten. A target
 //! whose eid prefix is not the class (`membrane::Config:...` built as `Voice(...)`) is stamped `parents: ['cls:voice']`, the ISA
 //! kind-mirror, so the engine mirrors it by kind.
-use membrane_vm::fields::Fields;
-use membrane_vm::infer::infer_src;
-use membrane_vm::syntax::{parse, parse_full, print};
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::infer::infer_src;
+use cliffvm::syntax::{parse, parse_full, print};
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H;

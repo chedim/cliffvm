@@ -1,11 +1,11 @@
 //! cliffvm: the field VM as a standalone app, no Python (docs/cliffvm.md). main() parses arguments and runs the pack folder.
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use membrane_vm::cli::{self, Cmd};
+use cliffvm::cli::{self, Cmd};
 
 #[cfg(feature = "alloc-stats")]
 #[global_allocator]
-static ALLOC: membrane_vm::alloc_stats::Counting = membrane_vm::alloc_stats::Counting;
+static ALLOC: cliffvm::alloc_stats::Counting = cliffvm::alloc_stats::Counting;
 
 static STOP: AtomicBool = AtomicBool::new(false);
 extern "C" fn on_term(_: libc::c_int) { STOP.store(true, Ordering::SeqCst); }
@@ -33,9 +33,9 @@ fn main() {
         }
         Ok(Cmd::Run(r)) => {
             #[cfg(feature = "alloc-stats")]
-            membrane_vm::alloc_stats::report();
+            cliffvm::alloc_stats::report();
             #[cfg(feature = "phase-trace")]
-            membrane_vm::trace::report();
+            cliffvm::trace::report();
             unsafe {
                 libc::signal(libc::SIGTERM, on_term as *const () as usize);
                 libc::signal(libc::SIGINT, on_term as *const () as usize);

@@ -1,10 +1,10 @@
 //! The banner port's built-ins (the operator, 2026-11-10: string built-ins as plain functions, no new syntax):
 //! lower, strip, startswith, lines, words, join, head; sort_by, fit; localtime.
-use membrane_vm::expr;
+use cliffvm::expr;
 use serde_json::{json, Value as J};
 
 fn ev(src: &str, env: J) -> J {
-    let s = membrane_vm::evaluate_json(src, &env.to_string()).unwrap();
+    let s = cliffvm::evaluate_json(src, &env.to_string()).unwrap();
     serde_json::from_str(&s).unwrap()
 }
 

@@ -2,7 +2,7 @@
 //! (naming the entity and the property); a reasoned null inside a list or a dict keeps its reason.
 mod common;
 
-use membrane_vm::host::{Host, Options};
+use cliffvm::host::{Host, Options};
 use serde_json::{json, Value as J};
 
 fn host(pack: &str) -> Host {

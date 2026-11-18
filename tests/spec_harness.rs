@@ -1,7 +1,7 @@
 //! The spec harness (operator 2026-11-12: a c1f test framework; JSON data now, c1f `TEST` blocks later): a spec is
 //! {packs, given, writes, expect}; the harness loads the packs, creates the given entities, performs the writes, settles the
 //! engine until it is quiet and checks every expectation, reporting each failure with the actual value. No sleeps, no polling.
-use membrane_vm::spec;
+use cliffvm::spec;
 use serde_json::json;
 
 fn pack_file(dir: &std::path::Path, name: &str, text: &str) -> String {

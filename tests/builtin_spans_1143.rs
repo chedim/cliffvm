@@ -1,10 +1,10 @@
 //! `spans(text, layer)`: the tokenizer's builtin (#1143): `[{start, end, text}]`, offsets in chars.
-use membrane_vm::fields::Fields;
-use membrane_vm::vm::Core;
+use cliffvm::fields::Fields;
+use cliffvm::vm::Core;
 use serde_json::{json, Value as J};
 
 fn ev(src: &str, env: J) -> J {
-    serde_json::from_str(&membrane_vm::evaluate_json(src, &env.to_string()).unwrap()).unwrap()
+    serde_json::from_str(&cliffvm::evaluate_json(src, &env.to_string()).unwrap()).unwrap()
 }
 
 #[test]
@@ -20,7 +20,7 @@ fn spans_returns_start_end_text_in_chars() {
 #[test]
 fn an_unknown_layer_is_an_error_naming_the_layers() {
     let e = json!({"t": "x"});
-    let r = membrane_vm::evaluate_json("spans(t, 'paragraph')", &e.to_string());
+    let r = cliffvm::evaluate_json("spans(t, 'paragraph')", &e.to_string());
     let m = format!("{:?}", r);
     assert!(m.contains("sentence") && m.contains("identifier"), "{m}");
 }
@@ -45,7 +45,7 @@ fn a_getter_in_a_loaded_pack_reads_the_spans() {
 
 #[test]
 fn the_inferencer_types_spans_and_checks_its_arguments() {
-    use membrane_vm::infer::infer_src;
+    use cliffvm::infer::infer_src;
     assert_eq!(infer_src("spans(t, 'word')", &[("t", "Text")]).unwrap().0, "List(Dict)");
     assert_eq!(infer_src("len(spans(t, 'word'))", &[("t", "Text")]).unwrap().0, "Int");
     assert!(!infer_src("spans(t)", &[("t", "Text")]).unwrap().1.is_empty(), "one argument is reported");
@@ -53,7 +53,7 @@ fn the_inferencer_types_spans_and_checks_its_arguments() {
 
 #[cfg(feature = "bin")]
 mod cliff {
-    use membrane_vm::host::{Host, Options};
+    use cliffvm::host::{Host, Options};
     use serde_json::json;
     /// the way the door's `run_cliff` loads a clifflet: the lines are the body of a getter on a scratch class
     #[test]

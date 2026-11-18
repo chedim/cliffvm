@@ -2,7 +2,7 @@
 //! `props(ids, 'name')` reads one property of every entity of a list (`props(ids, at, 'name')` takes the `at[i]`-th element of each value: a list index or a dict key),
 //! `vmean(ids)` is the mean of the unit vectors (`v`) of a list of entities, read straight from the store; and `group_by(rows, key, sums)` adds, to each group,
 //! the sum of each named column (no per-group comprehension to total it).
-use membrane_vm::expr::{self, V};
+use cliffvm::expr::{self, V};
 use serde_json::{json, Value as J};
 use std::collections::HashMap;
 
@@ -163,7 +163,7 @@ fn group_by_with_sums_is_one_step_however_many_rows() {
 
 #[test]
 fn the_names_are_reserved_and_typed() {
-    use membrane_vm::infer::infer_src;
+    use cliffvm::infer::infer_src;
     assert!(expr::RESERVED.contains(&"props") && expr::RESERVED.contains(&"vmean"));
     assert_eq!(infer_src("vmean(ids)", &[("ids", "List(Text)")]).unwrap().0, "List(Float)?");
     assert_eq!(infer_src("props(ids, 'n')", &[("ids", "List(Text)")]).unwrap().0, "List(Any)");

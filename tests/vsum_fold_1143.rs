@@ -2,11 +2,11 @@
 //! `vsum(vectors, weights?)`, the (weighted) sum of a LIST of vectors (`+` adds two; nothing added up a list), and
 //! `fold(init, [step for x in xs if keep])`, a comprehension that carries a value across the list: `acc` is `init`, then each step's value
 //! (a greedy pass keeps state, e.g. "keep a hit only if it is not a near duplicate of a hit ALREADY KEPT").
-use membrane_vm::expr;
+use cliffvm::expr;
 use serde_json::{json, Value as J};
 
-fn ev(src: &str) -> Result<J, String> { membrane_vm::evaluate_json(src, "{}").map(|s| serde_json::from_str(&s).unwrap()) }
-fn ev_env(src: &str, env: J) -> Result<J, String> { membrane_vm::evaluate_json(src, &env.to_string()).map(|s| serde_json::from_str(&s).unwrap()) }
+fn ev(src: &str) -> Result<J, String> { cliffvm::evaluate_json(src, "{}").map(|s| serde_json::from_str(&s).unwrap()) }
+fn ev_env(src: &str, env: J) -> Result<J, String> { cliffvm::evaluate_json(src, &env.to_string()).map(|s| serde_json::from_str(&s).unwrap()) }
 
 // ---- vsum ----------------------------------------------------------------------------------------------------------
 
@@ -127,7 +127,7 @@ fn the_steps_of_a_fold_count_against_the_budget() {
 
 #[test]
 fn the_inferencer_types_vsum_and_checks_the_arity_of_both() {
-    use membrane_vm::infer::infer_src;
+    use cliffvm::infer::infer_src;
     assert_eq!(infer_src("vsum(v)", &[("v", "List(List(Float))")]).unwrap().0, "List(Float)");
     assert!(!infer_src("vsum(v, w, w)", &[("v", "List(List(Float))"), ("w", "List(Float)")]).unwrap().1.is_empty(), "three arguments are reported");
     assert!(!infer_src("fold(0)", &[]).unwrap().1.is_empty(), "one argument is reported");

@@ -1,9 +1,9 @@
 //! `Error` in the field (#1143, docs/c1f-error.md section (c), operator decisions 2026-11-13): a derived Error is stored as a plain null
 //! with its kind in `Core.why` (so the old routes see null); a getter reading an Error returns the same Error unchanged; a WHEN over an
 //! Error is that Error (it does not fall through to the next arm); a setter that writes an Error is refused with a `refused` receipt.
-use membrane_vm::fields::Fields;
-use membrane_vm::host::{Host, Options};
-use membrane_vm::vm::{Core, Host as VmHost, Write};
+use cliffvm::fields::Fields;
+use cliffvm::host::{Host, Options};
+use cliffvm::vm::{Core, Host as VmHost, Write};
 use serde_json::{json, Value as J};
 
 fn host(pack: &str) -> Host {

@@ -1,7 +1,7 @@
 //! Static type inference over c1f getters (#1143, operator's design 2026-11-12): a REPORT, it enforces nothing.
 //! A getter's type follows from its expression and the types of what it reads. Plain properties written from outside are
 //! untyped edges (Any). Nulls propagate like SQL's; `x or d` strips the null; `Int(x)` is a checked cast (value or a null).
-use membrane_vm::infer::{infer_pack, infer_packs, infer_src};
+use cliffvm::infer::{infer_pack, infer_packs, infer_src};
 
 fn ty(src: &str, vars: &[(&str, &str)]) -> String { infer_src(src, vars).unwrap().0 }
 fn found(src: &str, vars: &[(&str, &str)]) -> Vec<String> { infer_src(src, vars).unwrap().1 }

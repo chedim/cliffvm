@@ -3,7 +3,7 @@
 //! Content only, no clock: three runs on one store write and birth entities; the stored journal holds every line in order, and a replay from it rebuilds every entity the rows hold.
 mod common;
 
-use membrane_vm::host::{Host, Line, Options};
+use cliffvm::host::{Host, Line, Options};
 use serde_json::{json, Map, Value as J};
 
 fn tmp(tag: &str) -> std::path::PathBuf {

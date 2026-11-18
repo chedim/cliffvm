@@ -1,5 +1,5 @@
 //! #994 section 2 rules 1 and 2: self-read exclusion, one round per outside write.
-use membrane_vm::getters::Engine;
+use cliffvm::getters::Engine;
 use serde_json::{json, Value as J};
 
 fn num(e: &Engine, p: &str) -> i64 { e.store.get(p).and_then(|v| v.as_i64()).unwrap_or(0) }

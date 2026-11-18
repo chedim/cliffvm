@@ -1,5 +1,5 @@
 //! #1001 k2: resident vector store + cached `near` getter.
-use membrane_vm::topk::*;
+use cliffvm::topk::*;
 
 #[test]
 fn near_cached_until_query_or_set_changes() {

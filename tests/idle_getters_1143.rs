@@ -2,8 +2,8 @@
 //! The cause: any pack load or removal (every `run_cliff` loads and removes a cliff pack) re-registered ALL getters and recomputed every getter of every
 //! entity, though no input of theirs moved. Now a load recomputes only the getters it changed or added. One test: the eval table is the process's.
 #![cfg(feature = "bin")]
-use membrane_vm::host::{Host, Options};
-use membrane_vm::stats;
+use cliffvm::host::{Host, Options};
+use cliffvm::stats;
 use serde_json::json;
 
 fn calls(prop: &str) -> u64 { stats::global_lifetime().iter().filter(|r| r.prop == prop).map(|r| r.calls).sum() }

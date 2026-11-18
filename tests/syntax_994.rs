@@ -1,8 +1,8 @@
 //! #994 syntax pass: cliffhanger's text form for field setters (src/syntax.rs). The goal graph ships as text
 //! (packs/goalgraph.c1f); the old WHEN/WHERE/WRITE triggers migrate into it through the translator, unchanged.
-use membrane_vm::fields::{OnSet, LLM_CALL};
-use membrane_vm::syntax::{parse, print};
-use membrane_vm::translate::{goalgraph_setters, translated_goalgraph_setters, GOALGRAPH_CH};
+use cliffvm::fields::{OnSet, LLM_CALL};
+use cliffvm::syntax::{parse, print};
+use cliffvm::translate::{goalgraph_setters, translated_goalgraph_setters, GOALGRAPH_CH};
 
 #[test]
 fn the_text_pack_equals_the_migrated_triggers() {
@@ -61,7 +61,7 @@ fn mistakes_are_named_with_their_line() {
 
 #[test]
 fn packs_load_at_runtime_replace_by_name_and_a_broken_one_changes_nothing() {
-    use membrane_vm::fields::Fields;
+    use cliffvm::fields::Fields;
     let mut f = Fields::goalgraph();
     let base = (f.setters.len(), f.getters.len());
     assert!(!f.classes().contains(&"Lamp".to_string()));
@@ -78,7 +78,7 @@ fn packs_load_at_runtime_replace_by_name_and_a_broken_one_changes_nothing() {
 
 #[test]
 fn a_pack_declaring_on_another_packs_class_must_import_it() {
-    use membrane_vm::fields::Fields;
+    use cliffvm::fields::Fields;
     let mut f = Fields::goalgraph();
     let e = f.set_pack("inflight", "PACK inflight 1\nTask.status on-setter row:\n  ALWAYS: this.shown = True\n").unwrap_err();
     assert!(e.contains("belongs to pack goalgraph") && e.contains("IMPORT goalgraph 1"), "{}", e);
@@ -89,7 +89,7 @@ fn a_pack_declaring_on_another_packs_class_must_import_it() {
 
 #[test]
 fn a_pack_waits_for_its_imports_and_refuses_a_wrong_major() {
-    use membrane_vm::fields::Fields;
+    use cliffvm::fields::Fields;
     let mut f = Fields::goalgraph();
     let e = f.set_pack("inflight", "PACK inflight 1\nIMPORT dom 1\nDomNode.text on-setter echo:\n  ALWAYS: this.seen = True\n").unwrap_err();
     assert!(e.contains("imports dom 1, which isn't loaded"), "{}", e);
@@ -104,7 +104,7 @@ fn a_pack_waits_for_its_imports_and_refuses_a_wrong_major() {
 
 #[test]
 fn a_pack_can_not_take_a_class_by_its_name_sorting_first() {
-    use membrane_vm::fields::Fields;
+    use cliffvm::fields::Fields;
     let mut f = Fields::goalgraph();
     let e = f.set_pack("aaa", "PACK aaa 1\nTask.status on-setter hijack:\n  ALWAYS: this.note = 1\n").unwrap_err();
     assert!(e.contains("belongs to pack goalgraph"), "{}", e);

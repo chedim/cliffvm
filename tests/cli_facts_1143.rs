@@ -1,10 +1,10 @@
 //! `--fact name=value` tells any Boot fact (#1143): the host passes it through, a pack decides what it means. The value is JSON when
 //! it parses as JSON (a number, true, a list), else the text as it is. The named options keep winning for the facts they own.
 #![cfg(feature = "store")]
-use membrane_vm::cli::{facts, parse, Cmd};
+use cliffvm::cli::{facts, parse, Cmd};
 use serde_json::json;
 
-fn run(args: &[&str]) -> membrane_vm::cli::RunArgs {
+fn run(args: &[&str]) -> cliffvm::cli::RunArgs {
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     match parse(&a).unwrap() { Cmd::Run(r) => r, o => panic!("{o:?}") }
 }
