@@ -1,5 +1,7 @@
 # cliffvm
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24351422.svg)](https://doi.org/10.5281/zenodo.24351422)
+
 The **cliffhanger VM**: a reactive graph of entities with getters and setters, written in Rust, with a SQLite store, an HTTP door and drivers for files, commands, HTTP, SQL and cron. Its packs and its pages are written in **c1f**, the field's own language ([chedim/cliffhanger](https://github.com/chedim/cliffhanger)). It is the engine of [babyseat](https://github.com/chedim/babyseat), the AI seat whose memory is a graph the model programs; it also builds for the browser (wasm) and talks to other programs over [GraphLink](https://github.com/chedim/graphlink).
 
 **Status: the engine lives here.** This repository was cut from the `native/` folder of babyseat with its history, so `git log` shows the engine's life so far. Engine changes are made here and released here (a tag-triggered release builds the six platform binaries); babyseat takes the release named by its `CLIFFVM_VERSION`, and `native/` is gone from it. The tests that start the real seat on babyseat's own packs and apps live in babyseat (`seat-tests/`), where they run on the release (the library and the program).
