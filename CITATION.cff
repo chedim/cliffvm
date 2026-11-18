@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: "cliffvm"
+type: software
+authors:
+  - given-names: "Dmitrii O."
+    family-names: "Chechetkin"
+repository-code: "https://github.com/chedim/cliffvm"
+license: MIT
+abstract: >-
+  cliffvm is the cliffhanger VM: a reactive graph of entities with getters and
+  setters, a SQLite store, an HTTP door and drivers. It is the engine of babyseat,
+  an AI seat whose memory is a graph the model programs; the behaviour is written
+  in c1f packs and the engine is only the host.
+keywords:
+  - virtual machine
+  - reactive graph
+  - entity graph
+  - memory
+  - LLM
