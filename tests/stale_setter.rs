@@ -1,6 +1,6 @@
 //! A setter sees the getters as they were BEFORE the write that fired it (the engine's rule). A setter that reads a getter
 //! which depends on its own trigger property reads a stale value: the loader refuses it and says what to do instead.
-use membrane_vm::fields::Fields;
+use cliffvm::fields::Fields;
 
 fn load(src: &str) -> Result<(), String> { Fields::goalgraph().set_pack("t", src) }
 

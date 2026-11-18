@@ -2,9 +2,9 @@
 //! {id, url, method?, headers?, body?, stream?}` is an effect whose receipt is data -- {status, http_status, headers, body}.
 //! With `stream: true` the body arrives as entities `Chunk:<fetch>:<n>` ({fetch, n, data, done}) pushed into the engine as it
 //! is read, and the receipt comes at the end. http and https (rustls; `ca_pem` adds a trusted root).
-use membrane_vm::fields::Fields;
-use membrane_vm::store::Store;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::store::Store;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 use std::io::{Read, Write as IoWrite};
 use std::net::TcpListener;

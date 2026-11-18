@@ -1,7 +1,7 @@
 //! A write that creates an entity of a class the writing pack may not create is REFUSED WITH A RECEIPT (#1143, operator 2026-11-14):
 //! it used to be dropped silently (a view pack drawing `DomNode:...` with no loaded pack declaring DomNode did nothing, no message).
 //! The cases: a write to an EXISTING entity of a class no pack owns stays legal; creating one as an unprivileged pack is the silent case.
-use membrane_vm::host::{Host, Options};
+use cliffvm::host::{Host, Options};
 use serde_json::{json, Map, Value as J};
 
 fn props(v: J) -> Map<String, J> { v.as_object().unwrap().clone() }

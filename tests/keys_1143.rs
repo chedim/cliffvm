@@ -1,6 +1,6 @@
 //! `keys(d)`: the keys of a dict, as a list of text, in the order the dict holds them (#1143, operator 2026-11-16: the one builtin of the old "proposed, not added" list that is added).
 //! It is pure (a value in, a list out), costs one step whatever the size, and a read still pending is an empty list, as `pluck` does.
-use membrane_vm::expr::{self, V};
+use cliffvm::expr::{self, V};
 use serde_json::{json, Value as J};
 use std::collections::HashMap;
 

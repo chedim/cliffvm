@@ -4,7 +4,7 @@
 use serde_json::{json, Value as J};
 
 fn ev(src: &str) -> Result<J, String> {
-    membrane_vm::evaluate_json(src, "{}").map(|s| serde_json::from_str(&s).unwrap())
+    cliffvm::evaluate_json(src, "{}").map(|s| serde_json::from_str(&s).unwrap())
 }
 
 #[test]

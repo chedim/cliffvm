@@ -1,9 +1,9 @@
 //! A write whose PROPERTY NAME is computed (#1143, the MCP door's entity_write): `<target>.[<expr>] = value`. The expression gives the
 //! property's name (non-empty text; anything else writes nothing). Everything else is a write as before: the target's class must be
 //! one the pack owns or imports (a receipt `refused` otherwise), and the entity is created by the creation path.
-use membrane_vm::fields::Fields;
-use membrane_vm::syntax::{parse, print};
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::syntax::{parse, print};
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H;

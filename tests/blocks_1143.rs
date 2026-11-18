@@ -1,10 +1,10 @@
 //! Scoped code blocks in getters and setters (operator, 2026-11-12): a bare `name = expr` line is a LOCAL, visible to the later
 //! lines of its own block only; the last line of a getter block is its value; each WHEN arm is its own block. The 64-node and
 //! 400-character caps are gone: an evaluation has a STEP BUDGET instead (a reasoned null, never a hang or a panic).
-use membrane_vm::expr;
-use membrane_vm::fields::Fields;
-use membrane_vm::syntax::parse_full;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::expr;
+use cliffvm::fields::Fields;
+use cliffvm::syntax::parse_full;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H;
@@ -205,8 +205,8 @@ fn a_local_is_not_mistaken_for_a_getter_read_by_the_stale_check() {
 #[test]
 fn a_pack_with_blocks_prints_and_parses_back() {
     let p = parse_full("PACK t 1\nBox.k on-setter s:\n  d = this.k * 2\n  this.o = d\n").unwrap();
-    let text = membrane_vm::syntax::print(&p.setters);
-    assert_eq!(membrane_vm::syntax::parse(&text).unwrap(), p.setters, "{text}");
+    let text = cliffvm::syntax::print(&p.setters);
+    assert_eq!(cliffvm::syntax::parse(&text).unwrap(), p.setters, "{text}");
 }
 
 // ---- caps are gone; a step budget instead -----------------------------------------------------------------------------
@@ -276,7 +276,7 @@ fn a_very_deep_expression_never_overflows_the_stack() {
 
 #[test]
 fn infer_types_a_getter_block_through_its_locals() {
-    let r = membrane_vm::infer::infer_pack("PACK t 1\nBox.label getter:\n  n = len('abc')\n  tag = 'n=' + str(n)\n  tag\nBox.num getter:\n  n = len('abc')\n  n\n").unwrap();
+    let r = cliffvm::infer::infer_pack("PACK t 1\nBox.label getter:\n  n = len('abc')\n  tag = 'n=' + str(n)\n  tag\nBox.num getter:\n  n = len('abc')\n  n\n").unwrap();
     assert_eq!(r.getters["Box.label"], "Text", "{:?}", r.getters);
     assert_eq!(r.getters["Box.num"], "Int", "{:?}", r.getters);
     assert!(r.findings.is_empty(), "{:?}", r.findings);
@@ -284,6 +284,6 @@ fn infer_types_a_getter_block_through_its_locals() {
 
 #[test]
 fn infer_types_a_setter_local_for_its_writes() {
-    let r = membrane_vm::infer::infer_pack("PACK t 1\nBox.k on-setter s:\n  d = 'x' + 'y'\n  this.o = d\n").unwrap();
+    let r = cliffvm::infer::infer_pack("PACK t 1\nBox.k on-setter s:\n  d = 'x' + 'y'\n  this.o = d\n").unwrap();
     assert_eq!(r.writes["Box.o"], "Text", "{:?}", r.writes);
 }

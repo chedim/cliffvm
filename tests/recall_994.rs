@@ -2,9 +2,9 @@
 //! (the Python lane is not importable here; the reference mirrors recall_policy.py line for line).
 //! Replay one journal of dial and ask writes; after EVERY write the field's dials and ask getters must equal
 //! the reference, and the whole-field checksum (FNV-1a) must be stable and sensitive.
-use membrane_vm::fields::Fields;
-use membrane_vm::recall;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::recall;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Map, Value as J};
 
 struct H;

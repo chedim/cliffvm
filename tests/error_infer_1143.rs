@@ -1,6 +1,6 @@
 //! `Error` in the static inference (#1143, docs/c1f-error.md section (d)): Error is a KIND (not a null flag, never stripped by `or`); an operation
 //! on a value that may be an Error may be an Error; `x is Error` and `why(x)` read it without; the failure sites type as `T | Error`.
-use membrane_vm::infer::{infer_packs, infer_src};
+use cliffvm::infer::{infer_packs, infer_src};
 
 fn ty(src: &str, vars: &[(&str, &str)]) -> String { infer_src(src, vars).unwrap().0 }
 fn found(src: &str, vars: &[(&str, &str)]) -> Vec<String> { infer_src(src, vars).unwrap().1 }

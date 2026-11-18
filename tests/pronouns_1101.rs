@@ -1,6 +1,6 @@
 //! #1101: a bare it / that / they in a c1f expression, with no variable of that name, resolves through the host's
 //! context stack at the moment it runs; unbound, it fails naming the pronoun (never a silent wrong target).
-use membrane_vm::expr::{eval, parse, py_str, World, V};
+use cliffvm::expr::{eval, parse, py_str, World, V};
 use std::collections::HashMap;
 
 struct W(Option<V>);

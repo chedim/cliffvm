@@ -2,7 +2,7 @@
 //! Found on an imported store: a trivial request evaluated eight getters of `instances('Boot')` and each took about 5 ms with 30,000 loaded entities (the messages and their
 //! children), so a request for ONE row cost 50-60 ms and a session fetched row by row 45-64 ms a row. The bound below is a TEST bound between "a compare per entity" and
 //! "a Vec<String> built per entity" (not a product constant).
-use membrane_vm::host::{Host, Options};
+use cliffvm::host::{Host, Options};
 use serde_json::json;
 
 fn host(pack: &str) -> Host {

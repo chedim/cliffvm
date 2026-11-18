@@ -3,8 +3,8 @@
 //! is the root of trust: its packs are privileged, nothing is trusted by name, a later app is a layer above with no privilege.
 mod common;
 
-use membrane_vm::expr;
-use membrane_vm::host::{Host, Options};
+use cliffvm::expr;
+use cliffvm::host::{Host, Options};
 use serde_json::{json, Map, Value as J};
 use std::path::{Path, PathBuf};
 

@@ -3,7 +3,7 @@
 #![cfg(feature = "bin")]
 mod common;
 
-use membrane_vm::host::{Host, Options};
+use cliffvm::host::{Host, Options};
 use serde_json::json;
 
 fn size(p: &std::path::Path) -> u64 { std::fs::metadata(p).map(|m| m.len()).unwrap_or(0) }

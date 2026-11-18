@@ -2,9 +2,9 @@
 //! that null"). A getter whose value is null remembers why; `why_chain(eid, prop)` walks the inputs it read, back to the first
 //! null that has a reason of its own: [{eid, prop, reason}] from the property asked about down to the origin. A getter that
 //! errors is a null with the error as its reason (it no longer keeps a stale value).
-use membrane_vm::fields::Fields;
-use membrane_vm::store::Store;
-use membrane_vm::vm::{Core, Host};
+use cliffvm::fields::Fields;
+use cliffvm::store::Store;
+use cliffvm::vm::{Core, Host};
 use serde_json::{json, Value as J};
 
 struct H;
@@ -58,7 +58,7 @@ fn a_getter_that_errors_is_a_null_with_the_error_as_its_reason_not_a_stale_value
     let (mut c, mut f) = world("PACK w 1\nT.e getter: len(this.n)\nT.f getter: this.e + 1\n", &[("T:1", "T", json!({"n": [1, 2]}))], None);
     assert_eq!(c.docs["T:1"].props["e"], json!(2));
     // n becomes a number: len(3) is an error. The old value (2) must not stay.
-    let w = membrane_vm::vm::Write { eid: "T:1".into(), prop: "n".into(), new: json!(3), old: json!([1, 2]), writer: "person".into(), chain: json!({}), seq: 9 };
+    let w = cliffvm::vm::Write { eid: "T:1".into(), prop: "n".into(), new: json!(3), old: json!([1, 2]), writer: "person".into(), chain: json!({}), seq: 9 };
     c.hear(w.clone(), None, 2.0);
     let mut seq = 10;
     f.react(&mut c, &H, w, 2.0, &mut seq);

@@ -1,4 +1,4 @@
-//! membrane_vm: the cliffhanger VM, native (#971): the engine behind the `cliffvm` seat and the browser build (wasm). `Core` takes and
+//! cliffvm: the cliffhanger VM, native (#971): the engine behind the `cliffvm` seat and the browser build (wasm). `Core` takes and
 //! gives values as JSON text.
 
 pub mod adapters;

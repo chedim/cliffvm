@@ -2,8 +2,8 @@
 //! a silent rebuild or birth never calls out (it would run every chat's recall at boot). A host error is the
 //! getter's error: a `refused` receipt on the entity, the field keeps its value.
 use std::cell::RefCell;
-use membrane_vm::fields::Fields;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H { calls: RefCell<Vec<(String, String)>>, fail: bool }

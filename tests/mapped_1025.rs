@@ -1,5 +1,5 @@
 //! #1025: the sentence vectors read in place (a mapped float16 file; Metal no-copy buffers or the CPU).
-use membrane_vm::mapped::{f16_to_f32, Mapped, CHUNK_ROWS};
+use cliffvm::mapped::{f16_to_f32, Mapped, CHUNK_ROWS};
 use std::io::Write;
 
 const DIM: usize = 1024;
@@ -34,7 +34,7 @@ fn append(path: &std::path::Path, r: &[u16]) {
 
 fn reference(all: &[u16], q: &[f32]) -> Vec<f32> {
     let f: Vec<f32> = all.iter().map(|h| f16_to_f32(*h)).collect();
-    membrane_vm::topk::scores_cpu(&f, DIM, q)
+    cliffvm::topk::scores_cpu(&f, DIM, q)
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn mapped_scores_equal_the_reference_on_cpu_and_gpu_and_follow_appends() {
         assert!(worst < 1e-4, "gpu={} on_gpu={} worst {}", gpu, m.on_gpu(), worst);
         assert_eq!(m.chunks(), 2);
         let top = m.near(&q, 20, n1).unwrap();
-        let ref_top = membrane_vm::topk::top_k(&want, 20);
+        let ref_top = cliffvm::topk::top_k(&want, 20);
         assert_eq!(top.iter().map(|t| t.0).collect::<Vec<_>>(), ref_top, "gpu={}", gpu);
         println!("gpu requested {} -> on_gpu {}", gpu, m.on_gpu());
     }

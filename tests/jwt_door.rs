@@ -2,8 +2,8 @@
 //! `exp` and `sub` required, `nbf`/`iat` checked with a 30 s leeway, a refused token is only ever "invalid token". The token
 //! comes from `Authorization: Bearer`, HTTP Basic (the token as the password) or the `membrane_jwt` cookie -- never the
 //! query string. A verified request carries `authed`, `sub` and `claims`; a pack decides what that allows.
-use membrane_vm::http::token_of;
-use membrane_vm::jwt;
+use cliffvm::http::token_of;
+use cliffvm::jwt;
 
 const SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 const NOW: f64 = 1_800_000_000.0;

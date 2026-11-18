@@ -1,8 +1,8 @@
 //! #994 row 8: entity scripts as field data. The script text shipped in native/packs/scripts.json equals the Python
 //! constants byte-for-byte (fixture generated from night.py / autonode.py / chat_io.py), lands on the owning entities as
 //! tick/watch/getter properties, and the whole-field checksum of the load is pinned.
-use membrane_vm::packs;
-use membrane_vm::vm::Core;
+use cliffvm::packs;
+use cliffvm::vm::Core;
 use serde_json::Value;
 
 const FIX: &str = include_str!("fixtures/py_scripts_r8.json");

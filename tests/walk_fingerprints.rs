@@ -1,5 +1,5 @@
 //! The autonode file-tree fingerprint walk, native: one call, no Python per file (each Python stat waited on the GIL).
-use membrane_vm::walk::{fingerprints, Skip};
+use cliffvm::walk::{fingerprints, Skip};
 use std::fs;
 
 #[test]

@@ -1,6 +1,6 @@
 //! The caps are gone (operator, 2026-11-12: scoped blocks replace "name a part as a getter"; an evaluation has a step budget).
 //! ch.py's 64-node / 400-character caps are intentionally NOT kept in parity.
-use membrane_vm::expr::{self, parse};
+use cliffvm::expr::{self, parse};
 
 #[test]
 fn a_long_expression_parses() {

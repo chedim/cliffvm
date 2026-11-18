@@ -2,7 +2,7 @@
 //! An Error is contagious everywhere a value is USED and is never hidden by a default: arithmetic, `-x`, `x[i]`, `x.a`, calls, string `+`,
 //! comparisons, `not`, `and`, `or`, a condition (`if`, a comprehension's `if`) all give that Error. `is`, `why(x)` and `x == None` read it
 //! without propagating it. A list or dict holding an Error is not an Error; the element stays one inside the evaluation.
-use membrane_vm::expr::{eval, parse, parse_block, World, V};
+use cliffvm::expr::{eval, parse, parse_block, World, V};
 use std::collections::HashMap;
 
 struct W;

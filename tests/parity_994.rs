@@ -4,8 +4,8 @@
 //! Row 2 built the fields side (native/src/fields.rs); the gg_* tests below replay a goalgraph journal
 //! (tasks, a card, a wait, a goal) through today's 12 triggers and through the fields, and compare.
 //! Today-vs-today and the checksum's own sensitivity prove the gate itself.
-use membrane_vm::fields::Fields;
-use membrane_vm::vm::{Core, Host, Step, Trig, Write, Spec};
+use cliffvm::fields::Fields;
+use cliffvm::vm::{Core, Host, Step, Trig, Write, Spec};
 use serde_json::{json, Value as J};
 
 struct H;

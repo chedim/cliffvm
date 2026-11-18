@@ -3,8 +3,8 @@
 //! journalling them whole (docs/cliffvm.md, "MAPPED"). The field's states, seeds, episodes and background are such classes: stored rows, never replayed.
 mod common;
 
-use membrane_vm::host::{Host, Line, Options};
-use membrane_vm::syntax::parse_full;
+use cliffvm::host::{Host, Line, Options};
+use cliffvm::syntax::parse_full;
 use serde_json::{json, Map, Value as J};
 
 fn tmpfile(tag: &str) -> String {
