@@ -6,6 +6,14 @@ authors:
   - given-names: "Dmitrii O."
     family-names: "Chechetkin"
 repository-code: "https://github.com/chedim/cliffvm"
+doi: "10.5281/zenodo.24351422"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24351422"
+    description: "Concept DOI: all versions, resolves to the newest"
+  - type: doi
+    value: "10.5281/zenodo.24351423"
+    description: "Version DOI of 0.2.1"
 license: MIT
 abstract: >-
   cliffvm is the cliffhanger VM: a reactive graph of entities with getters and
