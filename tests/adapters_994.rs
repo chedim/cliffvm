@@ -1,9 +1,9 @@
 //! #994 row 5: calls as writes (#959/#956) as on-setters vs a hand-coded reference of adapters.py `_written_call`.
 //! Replay one journal of `invoke` writes; after EVERY write the object's receipt props, its call path, the Method's
 //! consumed slot and the asked effects must equal the reference; the whole-field checksum (FNV-1a) is stable and sensitive.
-use membrane_vm::adapters::CLASS_METHOD;
-use membrane_vm::fields::Fields;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::adapters::CLASS_METHOD;
+use cliffvm::fields::Fields;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Map, Value as J};
 
 struct H;

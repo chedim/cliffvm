@@ -2,7 +2,7 @@
 //! carries WHY it is one (`pending: read(/a)`, `error: ...`, `absent`). Steps 1 and 2: errors on a null operand become a null with a
 //! reason; the reason travels through arithmetic, attributes, indexes and calls. The silent coercions (len -> 0, iteration -> [],
 //! plain -> '') are unchanged for now (step 3) and pinned here so the day they change is a visible, reviewed day.
-use membrane_vm::expr::{eval, parse, py_eq, to_json, World, V};
+use cliffvm::expr::{eval, parse, py_eq, to_json, World, V};
 use std::collections::HashMap;
 
 struct W;

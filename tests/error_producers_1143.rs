@@ -2,9 +2,9 @@
 //! failed parse (`json`), a getter body that raised, the step budget (time never makes one: the clock decides no value), and a pack's own `Error('reason')`.
 //! What stays null: a missing property, `.x` of an absent value, `pending: ...`, a collected virtual entity, `f of a null`.
 //! Old routes are unchanged: an Error is a plain null there (`Core.docs`), and it reads back as an Error through `why`/`failed`.
-use membrane_vm::expr::{self, eval, parse, parse_block, World, V};
-use membrane_vm::fields::Fields;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::expr::{self, eval, parse, parse_block, World, V};
+use cliffvm::fields::Fields;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 use std::collections::HashMap;
 

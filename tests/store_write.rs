@@ -1,9 +1,9 @@
 //! The store driver writes (operator, 2026-11-12: the cliff rust driver fully featured): `Store:<name>.run = {id, sql, args}`
 //! (or `{id, statements: [{sql, args}, ...]}`) is an effect with a receipt -- one transaction, bound arguments, INSERT /
 //! UPDATE / DELETE only (a read is a `sql()` getter; DDL, ATTACH and PRAGMA are refused), RETURNING rows in the receipt.
-use membrane_vm::fields::Fields;
-use membrane_vm::store::Store;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::store::Store;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H;
@@ -36,7 +36,7 @@ fn world(p: &std::path::Path) -> (Core, Fields) {
     f.set_pack("std", "PACK std 1\nStore.kind getter: 'store'\n").unwrap();
     let mut c = Core::new();
     let path = p.to_str().unwrap().to_string();
-    c.store = Some(Store::with_exec(&path, std::sync::Arc::new(membrane_vm::sqlexec::NativeSqlExec::new(&path).unwrap())));
+    c.store = Some(Store::with_exec(&path, std::sync::Arc::new(cliffvm::sqlexec::NativeSqlExec::new(&path).unwrap())));
     c.load("Store:events".into(), "Store".into(), json!({}).as_object().unwrap().clone(), None, 0.0);
     let mut s = 0; f.rebuild(&mut c, 1.0, &mut s);
     (c, f)

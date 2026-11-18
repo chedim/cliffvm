@@ -1,8 +1,8 @@
 //! GRAPH LINK slice 2, the engine hooks (#1143; docs/graph-link.md, 15b): foreign reads (`pending`, `absent`, `refused`), subscriptions by dependency with the grace, inert replicas,
 //! the notices, the namespace retire, and two engines over a frame pipe. Tests count work (subs, frames, evaluations), never wall-clock: the rounds' `now` is a number the test passes.
-use membrane_vm::fields::{Fields, LinkVal};
-use membrane_vm::host::{Host, Options};
-use membrane_vm::vm::{Core, Host as VmHost, Write};
+use cliffvm::fields::{Fields, LinkVal};
+use cliffvm::host::{Host, Options};
+use cliffvm::vm::{Core, Host as VmHost, Write};
 use serde_json::{json, Map, Value as J};
 
 struct H;
@@ -28,7 +28,7 @@ impl Vm {
         Vm { c, f, seq: 0 }
     }
     fn born(&mut self, eid: &str, props: J, now: f64) {
-        let cls = membrane_vm::vm::class_of_eid(eid);
+        let cls = cliffvm::vm::class_of_eid(eid);
         self.f.arrive(&mut self.c, eid.into(), cls, props.as_object().unwrap().clone(), now);
         self.f.settle(&mut self.c, &H, now, &mut self.seq);
     }

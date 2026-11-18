@@ -1,6 +1,6 @@
 //! #1001 k2: GPU top-k ids == CPU top-k ids (ties tolerant: compare by score within eps), plus a 221k x 1024 timed run.
 //! Run: cargo test --release --features metal --test topk_gpu -- --nocapture --test-threads=1 (heavy one is #[ignore]).
-use membrane_vm::topk::*;
+use cliffvm::topk::*;
 
 struct Rng(u64);
 impl Rng { fn f(&mut self) -> f32 { self.0 ^= self.0 << 13; self.0 ^= self.0 >> 7; self.0 ^= self.0 << 17; ((self.0 >> 40) as f32 / 16777216.0) * 2.0 - 1.0 } }

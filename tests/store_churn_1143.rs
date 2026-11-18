@@ -2,7 +2,7 @@
 //! that changes nothing never touches the store. `Host::store_commits` counts the commits of the host's connection.
 mod common;
 
-use membrane_vm::host::{Host, Options};
+use cliffvm::host::{Host, Options};
 use rusqlite::Connection;
 use serde_json::{json, Map, Value as J};
 

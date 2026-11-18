@@ -1,8 +1,8 @@
 //! #994 row 7: seed packs as field declarations. The whole-field checksum (FNV-1a over every entity) after loading the
 //! shipped JSON packs equals the checksum after the old hand-coded loads (kept here as the oracle); a malformed pack
 //! declares nothing; loading twice is idempotent.
-use membrane_vm::vm::Core;
-use membrane_vm::{packs, recall};
+use cliffvm::vm::Core;
+use cliffvm::{packs, recall};
 
 /// canonical JSON text: object keys sorted at every depth (a parsed pack and a json! literal order keys differently)
 fn canon(v: &serde_json::Value) -> String {

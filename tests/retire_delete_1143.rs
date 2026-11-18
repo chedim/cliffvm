@@ -2,7 +2,7 @@
 //! RANGE of the primary key, not a `substr` test of every row. The plan of each delete must search the key index, never scan the table.
 mod common;
 
-use membrane_vm::host::{namespace_delete_sql, retire_delete_sql, Host, Options, ROWS, VECTORS};
+use cliffvm::host::{namespace_delete_sql, retire_delete_sql, Host, Options, ROWS, VECTORS};
 use rusqlite::Connection;
 use serde_json::{json, Map, Value as J};
 

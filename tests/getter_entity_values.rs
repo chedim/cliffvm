@@ -1,8 +1,8 @@
 //! A getter may store entity values (a list of them, a single one, nested in a dict): an entity is kept as a reference
 //! `{"$ref": "<eid>"}` and reads back as the entity, so another getter can iterate it and read its fields.
 //! (Before: "cannot write a EntityView" -- the field kept the old value.)
-use membrane_vm::fields::Fields;
-use membrane_vm::vm::{Core, Host};
+use cliffvm::fields::Fields;
+use cliffvm::vm::{Core, Host};
 use serde_json::{json, Map, Value as J};
 
 struct H;
@@ -69,7 +69,7 @@ fn the_stored_list_follows_the_entities() {
 
 // ---- setters write entity values the same way (they are the getters' syntactic mirror) ----
 
-use membrane_vm::vm::Write;
+use cliffvm::vm::Write;
 
 const SETTER_PACK: &str = "PACK sets 1\nIMPORT ents 1\n\
 Box.fill on-setter fill:\n  ALWAYS:\n    this.chosen = [t for t in instances('Thing') if t.on]\n    this.one = head([t for t in instances('Thing') if t.on], 1)\n    this.both = {'first': head([t for t in instances('Thing') if t.on], 1), 'n': 2}\n\

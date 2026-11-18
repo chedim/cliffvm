@@ -1,9 +1,9 @@
 //! The HTTP door (http.rs; operator 2026-11-12, cliff talks to rust directly): `Http:<name>.listen = {port}` binds, every
 //! request is an entity `Request:<n>` the engine is told of, a pack's getter DECIDES the answer, and `Http:<name>.respond`
 //! (written on the request by a setter) sends it. No Python anywhere in the path.
-use membrane_vm::fields::Fields;
-use membrane_vm::store::Store;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::store::Store;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 use std::io::{Read, Write as IoWrite};
 use std::net::TcpStream;

@@ -2,9 +2,9 @@
 //! first, the first WHEN that holds wins and falls through, an upper default ends it. Setters: all fire top first; a same-name setter in an
 //! upper layer replaces the lower one at compose; stacked setters writing one target: the FIRST (the top's) write wins, the later line is
 //! skipped before its right-hand side is evaluated and without running any effect, quietly across layers. `Why` names the layer.
-use membrane_vm::fields::Fields;
-use membrane_vm::store::Store;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::store::Store;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H;
@@ -117,7 +117,7 @@ fn why_names_the_layer_that_supplied_a_value() {
 #[test]
 fn the_inferred_types_see_the_arms_of_every_pack() {
     let upper = "PACK upper 1\nIMPORT base 1\nLight.word getter WHEN this.level > 5: 'bright'\n";
-    let r = membrane_vm::infer::infer_packs(&[BASE, upper]).expect("both parse");
+    let r = cliffvm::infer::infer_packs(&[BASE, upper]).expect("both parse");
     assert!(r[0].1.getters.contains_key("Light.word") && r[1].1.getters.contains_key("Light.word"));
 }
 

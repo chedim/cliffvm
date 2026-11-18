@@ -3,7 +3,7 @@
 //! stored with the row (survives eviction and restart) and, for a birth a replay does not recompute (a virtual trigger's), carried by the journal line's optional `by`.
 mod common;
 
-use membrane_vm::host::{Host, Line, MemoryConfig, Options};
+use cliffvm::host::{Host, Line, MemoryConfig, Options};
 use serde_json::{json, Map, Value as J};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

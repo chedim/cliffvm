@@ -2,11 +2,11 @@
 //! `::` after a namespace, `:` between segments (directly followed by a name character: the end-of-line colon of `WHEN c:` is
 //! untouched); `[expr]` appends `:<value>` (an int or text; anything else is a reasoned null and creates nothing); `.prop` reads a
 //! property, `:segment` after a `]` is a child entity. The quoted spellings keep working.
-use membrane_vm::expr::{self, V};
-use membrane_vm::fields::Fields;
-use membrane_vm::infer::infer_src;
-use membrane_vm::syntax::{parse, parse_full, print};
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::expr::{self, V};
+use cliffvm::fields::Fields;
+use cliffvm::infer::infer_src;
+use cliffvm::syntax::{parse, parse_full, print};
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 use std::collections::HashMap;
 

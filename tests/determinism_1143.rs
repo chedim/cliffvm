@@ -1,10 +1,10 @@
 //! Evaluation limits are DETERMINISTIC (#1143, operator 2026-11-13): the wall clock never changes a VALUE. A getter's result depends
 //! only on its inputs and the STEP budget. Time stays measured: `stats` counts a `slow` evaluation (self time over the former
 //! allowance, the dial `expr::eval_time_ms`, default 10 ms) and nothing else changes. The clock is injected, so nothing sleeps.
-use membrane_vm::expr;
-use membrane_vm::fields::Fields;
-use membrane_vm::stats;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::expr;
+use cliffvm::fields::Fields;
+use cliffvm::stats;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 use std::cell::Cell;
 

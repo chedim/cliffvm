@@ -1,6 +1,6 @@
 //! `x[i]` in a c1f expression (the operator, 2026-11-12): a list by position (negative from the end), a dict by key, an
 //! entity by property name. A miss is None, never an error; a base that is None stays None. No slices.
-use membrane_vm::expr::{eval, parse, py_str, World, V};
+use cliffvm::expr::{eval, parse, py_str, World, V};
 use std::collections::HashMap;
 
 struct W;

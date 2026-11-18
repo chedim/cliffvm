@@ -3,7 +3,7 @@
 //! not maintain what is in memory, the VM does"): the memory-budget facts say when, the engine's touch clock (`.touched`, not persisted) says which.
 mod common;
 
-use membrane_vm::host::{Host, MemoryConfig, Options};
+use cliffvm::host::{Host, MemoryConfig, Options};
 use serde_json::{json, Map, Value as J};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

@@ -1,6 +1,6 @@
 //! #994 row 9: the WHEN/WHERE/WRITE translation layer. goalgraph's triggers (data, packs/goalgraph.json) translate to the
 //! fields row 2 wrote by hand; the whole-field checksum gate is parity_994.rs (its goalgraph run now uses the translation).
-use membrane_vm::translate::{goalgraph_counts, goalgraph_setters, specs_of, translate, Field, GOALGRAPH};
+use cliffvm::translate::{goalgraph_counts, goalgraph_setters, specs_of, translate, Field, GOALGRAPH};
 use serde_json::json;
 
 fn w(t: &str, p: &str, v: &str) -> (String, String, String) { (t.into(), p.into(), v.into()) }

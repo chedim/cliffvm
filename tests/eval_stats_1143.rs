@@ -1,9 +1,9 @@
 //! Eval accounting (#1143): the VM counts, per (kind, class, property, pack), the getter and setter evaluations, their self time and their steps, in a
 //! fixed table; the host publishes it on `Stats:eval` (shipped pack `stats`) every window, and it changes no value and writes no journal line.
 //! The overhead of the counting is REPORTED by `overhead_report` (run it with `--nocapture`), never asserted.
-use membrane_vm::fields::Fields;
-use membrane_vm::stats::{self, Table, KIND_GETTER, KIND_SETTER};
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::stats::{self, Table, KIND_GETTER, KIND_SETTER};
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H;

@@ -1,9 +1,9 @@
 //! `x if c else y` in expressions, and getter arms: alternative definitions of one field, the first whose WHEN holds
 //! wins, an arm without WHEN is the default (the operator, 2026-11-10: "if arms as alternative definitions of the
 //! same field"). Arms compile to bare ifs.
-use membrane_vm::fields::Fields;
-use membrane_vm::syntax::parse_full;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::syntax::parse_full;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H;
@@ -158,7 +158,7 @@ Light.word getter:
 
 #[test]
 fn a_for_block_prints_and_parses_back_the_same() {
-    use membrane_vm::syntax::{parse, print};
+    use cliffvm::syntax::{parse, print};
     let sets = parse_full(SHELF).unwrap().setters;
     assert_eq!(parse(&print(&sets)).unwrap(), sets);
 }

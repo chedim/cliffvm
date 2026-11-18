@@ -3,8 +3,8 @@
 //! the host records `granted_by` from the writer; the boot pack is the root of trust.
 mod common;
 
-use membrane_vm::expr;
-use membrane_vm::host::{is_outside, Host, Line, Options};
+use cliffvm::expr;
+use cliffvm::host::{is_outside, Host, Line, Options};
 use serde_json::{json, Map, Value as J};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};

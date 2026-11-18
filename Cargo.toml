@@ -1,19 +1,19 @@
 [package]
 name = "cliffvm"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "The cliffhanger VM: a reactive graph of entities with getters and setters, a SQLite store, an HTTP door and drivers; the engine of babyseat"
 license = "MIT"
 repository = "https://github.com/chedim/cliffvm"
 readme = "README.md"
 # the tests that need babyseat's packs are not part of the package (tests/babyseat/README.md)
-exclude = ["/.github", "/tests/babyseat"]
+exclude = ["/.github"]
 keywords = ["graph", "vm", "reactive", "agents"]
 categories = ["development-tools"]
 
-# the library keeps its old name: babyseat's Python extension and its tests say `membrane_vm`; it is renamed when babyseat takes cliffvm as a dependency (the plan in README.md)
+# the library is `cliffvm`, as the package and the program are (it was `membrane_vm` until 0.2.0)
 [lib]
-name = "membrane_vm"
+name = "cliffvm"
 crate-type = ["cdylib", "rlib"]
 
 # THE ONE PLACE THE COMMAND'S NAME LIVES (docs/cliffvm.md): rename the app by changing `name` here (the tests read CARGO_BIN_EXE_<name>: one more line each)

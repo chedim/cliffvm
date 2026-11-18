@@ -1,7 +1,7 @@
 //! An entity of TWO extra classes at once (#1143). Its classes are the list in its `parents` property (`cls:<name>` ids, the ISA kinds): the
 //! getters of both apply, the setter of each fires (a kind's setter needs its ISA parent entity `cls:<name>`), and the list survives a
 //! journal replay. A `parents` write on an entity that already exists binds the getters of its kinds (they are bound at birth otherwise).
-use membrane_vm::host::{Host, Options};
+use cliffvm::host::{Host, Options};
 use serde_json::{json, Map, Value as J};
 
 const TWO: &str = "PACK two 1\nAlpha.sa getter: 'alpha:' + str(this.n)\nBeta.sb getter: 'beta:' + str(this.n)\nAlpha.go_a on-setter run-a:\n  WHEN this.go_a == True:\n    this.did_a = True\nBeta.go_b on-setter run-b:\n  WHEN this.go_b == True:\n    this.did_b = True\n";

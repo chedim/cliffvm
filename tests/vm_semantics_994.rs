@@ -1,8 +1,8 @@
 //! #994 review gaps 1-5 (doc sections 3-4): a read never fires a setter; a looping setter chain is bounded;
 //! cold start of a new world runs effects once; warm restart runs none (caches saved with the store, loaded back);
 //! the counting getter does not drift when an input write is dropped or doubled. Rust only.
-use membrane_vm::fields::{Fields, OnSet};
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::{Fields, OnSet};
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Map, Value as J};
 
 struct H;
@@ -200,7 +200,7 @@ fn a_getter_recalculated_twice_in_a_round_is_not_refused() {
 #[test]
 fn else_branches_run_the_first_true_one_only() {
     let mut fs = Fields::goalgraph();
-    fs.setters = membrane_vm::syntax::parse("
+    fs.setters = cliffvm::syntax::parse("
 Task.level on-setter grade:
   WHEN this.level >= 10: this.grade = 'high'
   ELSE WHEN this.level >= 5: this.grade = 'mid'
@@ -224,7 +224,7 @@ Task.old on-setter legacy:
 #[test]
 fn an_erroring_condition_stops_the_setter_and_never_runs_else() {
     let mut fs = Fields::goalgraph();
-    fs.setters = membrane_vm::syntax::parse("
+    fs.setters = cliffvm::syntax::parse("
 Task.level on-setter typo:
   WHEN nope == 1: this.a = 1
   ELSE: this.note = 'x'

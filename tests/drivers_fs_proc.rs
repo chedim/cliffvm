@@ -1,8 +1,8 @@
 //! The stdlib drivers (#1044): fs reads as asynchronous getter built-ins; File and Command effects run by the engine
 //! off its lock, their receipts landing as `<verb>_result`; entity scripts never trigger one.
-use membrane_vm::fields::Fields;
-use membrane_vm::store::Store;
-use membrane_vm::vm::{Core, Host, Write};
+use cliffvm::fields::Fields;
+use cliffvm::store::Store;
+use cliffvm::vm::{Core, Host, Write};
 use serde_json::{json, Value as J};
 
 struct H;

@@ -1,10 +1,10 @@
 //! `log(x)` (#1143, operator 2026-11-15): the natural log, the one builtin the move-log voter needs (its rarity is log(N / the events holding a thing)).
 //! The f64 log rounded to f32, so two devices whose math libraries differ in the last bits of an f64 give the same answer; an Error with its reason on a
 //! number that is not positive or on anything that is not a number; one step.
-use membrane_vm::expr;
+use cliffvm::expr;
 use serde_json::{json, Value as J};
 
-fn ev(src: &str) -> Result<J, String> { membrane_vm::evaluate_json(src, "{}").map(|s| serde_json::from_str(&s).unwrap()) }
+fn ev(src: &str) -> Result<J, String> { cliffvm::evaluate_json(src, "{}").map(|s| serde_json::from_str(&s).unwrap()) }
 
 #[test]
 fn log_is_the_natural_log_rounded_to_f32() {
@@ -43,7 +43,7 @@ fn log_is_one_step() {
 
 #[test]
 fn log_is_typed_a_float() {
-    use membrane_vm::infer::infer_src;
+    use cliffvm::infer::infer_src;
     assert_eq!(infer_src("log(n)", &[("n", "Int")]).unwrap().0, "Float");
     assert!(!infer_src("log(t)", &[("t", "Text")]).unwrap().1.is_empty(), "a text is reported");
     assert!(!infer_src("log(n, n)", &[("n", "Int")]).unwrap().1.is_empty(), "two arguments are reported");
