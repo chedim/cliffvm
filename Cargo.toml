@@ -1,6 +1,6 @@
 [package]
 name = "cliffvm"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "The cliffhanger VM: a reactive graph of entities with getters and setters, a SQLite store, an HTTP door and drivers; the engine of babyseat"
 license = "MIT"
