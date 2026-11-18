@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use graphlink_core::frame::{Op, Target, VERSION};
 use graphlink_core::link::{Event, Link, Me};
 use graphlink_core::transport::Transport;
-use graphlink_shm::{cells::{CellState, Cells, CellsReader}, Shm};
+use graphlink_shm::{cells::{CellState, Cells, CellsReader, Reclaim}, Shm};
 use serde_json::{json, Map, Value as J};
 
 use crate::fields::LinkVal;
@@ -31,6 +31,10 @@ struct Peer {
     subs: Vec<(Target, Option<Vec<String>>)>,
     /// what is in the cells now: key -> (revision, value, state); a cell is rewritten only when its value or state changes
     published: HashMap<String, (f64, J, CellState)>,
+    /// cells that did not fit (the table was full): kept, and written again once slots are freed (key -> value, state)
+    pending: HashMap<String, (J, CellState)>,
+    /// the two halves of reclaiming slots (graphlink docs/shared-memory.md, 4b): what this end has acknowledged of the peer's removals
+    reclaim: Reclaim,
     /// the peer's own cell table (it makes `/gl-<name>-pc`; mapped read-only once it exists), and the owner's numbers for reading it
     reader: Option<CellsReader>,
     spins: u64,
@@ -145,7 +149,7 @@ impl Peers {
             let cells = Cells::create(format!("/gl-{name}-sc"), slots, key_cap, val_cap, epoch).map_err(|e| format!("peers: {name}: {e}"))?;
             let mut link = Link::new(Me { ns: seat_ns.into(), build: format!("cliffvm {}", env!("CARGO_PKG_VERSION")), epoch: epoch as f64, support: vec![VERSION], initiator: true });
             ctl.send(&link.open()).map_err(|e| format!("peers: {name}: {e}"))?;
-            list.push(Peer { name: name.to_string(), ctl: Some(ctl), ring, seat_ns: seat_ns.to_string(), sup, cells, subs: vec![], published: HashMap::new(), reader: None, spins, depth, asked: HashMap::new(), seen: HashMap::new(), told_down: HashSet::new(), reported: HashSet::new(), link, ns: None, gone: false, declared, secret: auth.as_ref().map(|a| a.secret.clone()), refused: false });
+            list.push(Peer { name: name.to_string(), ctl: Some(ctl), ring, seat_ns: seat_ns.to_string(), sup, cells, pending: HashMap::new(), reclaim: Reclaim::new(), subs: vec![], published: HashMap::new(), reader: None, spins, depth, asked: HashMap::new(), seen: HashMap::new(), told_down: HashSet::new(), reported: HashSet::new(), link, ns: None, gone: false, declared, secret: auth.as_ref().map(|a| a.secret.clone()), refused: false });
             // the rings and the table exist now: the process the owner declared can attach
             let nm = name.to_string();
             if let Some(sup) = list.last_mut().and_then(|p| p.sup.as_mut()) { sup.start(&nm); }
@@ -225,6 +229,8 @@ impl Peer {
         self.seen.clear();
         self.told_down.clear();
         self.reader = None;
+        self.reclaim = Reclaim::new();
+        self.pending.clear();
         self.refused = false;
         Ok(())
     }
@@ -286,6 +292,7 @@ impl Peer {
         if self.reader.is_none() { self.reader = CellsReader::attach(format!("/gl-{}-pc", self.name)).ok(); }
         let Some(reader) = self.reader.as_ref() else { return };
         let (spins, depth) = (self.spins, self.depth);
+        let seen_removals = Reclaim::before(reader);
         let mut feed: Vec<(String, LinkVal, f64)> = vec![];
         for (eid, props) in self.asked.iter() {
             let ekey = format!("{eid}\u{1}");
@@ -314,6 +321,8 @@ impl Peer {
             if !map.is_empty() { feed.push((eid.clone(), LinkVal::Props(map), rev)); }
         }
         for (eid, val, rev) in feed { h.feed_val(&eid, val, rev); }
+        // what was asked has been read, the removals up to the count read first are seen: say so in the seat's table, and free the slots the peer has acknowledged
+        if let Err(e) = self.reclaim.after(seen_removals, reader, &mut self.cells, spins, depth) { if self.reported.insert("reclaim".into()) { eprintln!("cliffvm: peer {}: reclaiming slots: {e}", self.name); } }
     }
 
     /// A write the peer asks for: it becomes a `LinkWrite` (a question), the c1f verdict decides (packs/link.c1f, the fact `peer_writes`), and the seat applies an accepted one as an ordinary outside
@@ -336,17 +345,18 @@ impl Peer {
 
     /// Write what the peer subscribed to into the seat's cell table: each node's cells, for the props it named (all when none), whose value changed since the last turn.
     fn publish(&mut self, h: &Host) {
+        if !self.pending.is_empty() { self.retry(); }
         let mut eids: Vec<String> = vec![];
         for (t, _) in &self.subs {
             match t { Target::Id(e) => eids.push(e.clone()), Target::Prefix(p) => eids.extend(h.eids_with_prefix(p)) }
         }
         eids.sort();
         eids.dedup();
-        for eid in eids {
+        for eid in &eids {
             // a node another namespace owns is not the seat's to publish (a replica of the peer's own node would go straight back to it)
             if eid.split_once("::").map_or(false, |(ns, _)| ns != "membrane") { continue; }
             let wanted: Option<Vec<String>> = {
-                let named: Vec<&Option<Vec<String>>> = self.subs.iter().filter(|(t, _)| match t { Target::Id(e) => *e == eid, Target::Prefix(p) => eid.starts_with(p.as_str()) }).map(|(_, p)| p).collect();
+                let named: Vec<&Option<Vec<String>>> = self.subs.iter().filter(|(t, _)| match t { Target::Id(e) => e == eid, Target::Prefix(p) => eid.starts_with(p.as_str()) }).map(|(_, p)| p).collect();
                 if named.iter().any(|p| p.is_none()) { None } else { Some(named.iter().filter_map(|p| p.as_ref()).flatten().cloned().collect()) }
             };
             match h.entity_props(&eid) {
@@ -357,6 +367,16 @@ impl Peer {
                 }
             }
         }
+        // an entity that was published and is gone now (retired) is no longer listed under a prefix, so the loop above never visits it: its cells, node and props, become Gone.
+        // Only an entity that is really absent: a prefix lists the loaded entities, and one that is merely unloaded still has its props.
+        let present: std::collections::HashSet<&str> = eids.iter().map(String::as_str).collect();
+        let mut vanished: Vec<String> = self.published.iter()
+            .filter(|(k, (_, _, st))| *st == CellState::Live && k.split_once('\u{1}').map_or(false, |(e, _)| !present.contains(e)
+                && self.subs.iter().any(|(t, _)| match t { Target::Id(x) => x == e, Target::Prefix(p) => e.starts_with(p.as_str()) })))
+            .map(|(k, _)| k.clone()).collect();
+        vanished.retain(|k| k.split_once('\u{1}').map_or(false, |(e, _)| h.entity_props(e).is_none()));
+        vanished.sort();
+        for k in vanished { self.cell(&k, CellState::Gone, json!(null)); }
     }
 
     /// One cell: written when its value or state differs from what is there, at the next revision; a value that does not fit becomes a `Refused` cell that says why.
@@ -370,16 +390,25 @@ impl Peer {
             CellState::Refused => self.cells.mark(key, rev, CellState::Refused, value.as_str().unwrap_or("")),
         };
         match wrote {
-            Ok(()) => { self.published.insert(key.to_string(), (rev, value, state)); }
+            Ok(()) => { self.published.insert(key.to_string(), (rev, value, state)); self.pending.remove(key); }
             Err(why) if state == CellState::Live => {
                 // the value does not fit its slot (or the key its capacity, or the table is full): the cell says so, instead of keeping an old value
                 let reason = json!(why);
                 // what is remembered is what was ASKED (a live value), so an unchanged value that does not fit is not written again every turn
-                if self.cells.mark(key, rev, CellState::Refused, &why).is_ok() { self.published.insert(key.to_string(), (rev, value, state)); }
-                else { eprintln!("cliffvm: peer {}: cannot publish {key:?}: {reason}", self.name); self.published.insert(key.to_string(), (rev, value, state)); }
+                if self.cells.mark(key, rev, CellState::Refused, &why).is_ok() { self.published.insert(key.to_string(), (rev, value, state)); self.pending.remove(key); }
+                else { self.keep(key, value, state, &reason); }   // not even that fits: the table is full
             }
-            Err(why) => { eprintln!("cliffvm: peer {}: cannot publish {key:?}: {why}", self.name); self.published.insert(key.to_string(), (rev, value, state)); }
+            Err(why) => self.keep(key, value, state, &json!(why)),
         }
+    }
+
+    /// A cell that could not be written (the table is full): remember it, say so once, and write it again once the peer has acknowledged removals and slots are freed.
+    fn keep(&mut self, key: &str, value: J, state: CellState, why: &J) {
+        if self.pending.insert(key.to_string(), (value, state)).is_none() { eprintln!("cliffvm: peer {}: cannot publish {key:?} yet: {why}", self.name); }
+    }
+
+    fn retry(&mut self) {
+        for (key, (value, state)) in std::mem::take(&mut self.pending) { self.cell(&key, state, value); }
     }
 
     /// the peer is gone: its `Vm` stays (a peer is durable), its `link` says so
