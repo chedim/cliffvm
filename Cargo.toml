@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/chedim/cliffvm"
 readme = "README.md"
 # the tests that need babyseat's packs are not part of the package (tests/babyseat/README.md)
-exclude = ["/.github", "/tests/babyseat"]
+exclude = ["/.github"]
 keywords = ["graph", "vm", "reactive", "agents"]
 categories = ["development-tools"]
 
