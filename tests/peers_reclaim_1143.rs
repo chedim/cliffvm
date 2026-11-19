@@ -91,3 +91,25 @@ fn entities_born_and_retired_round_after_round_pass_through_a_table_too_small_fo
         w.turns(3);                                // the seat reads the acknowledgement and frees the slots
     }
 }
+
+#[test]
+fn a_cell_that_does_not_fit_is_reported_once_however_many_turns_it_waits() {
+    // the seat says "cannot publish <key> yet" for a waiting cell ONCE: the test runs the scenario in a child of itself, to read what it writes on stderr
+    if std::env::var("CLIFFVM_TEST_FULL_TABLE_CHILD").is_ok() {
+        let mut w = World::start(4);
+        for id in ["membrane::Req:a", "membrane::Req:b"] { w.h.born(id, "Req", props(1), "t"); }
+        w.wait("the first two entities never became cells", |w| ["membrane::Req:a", "membrane::Req:b"].iter().all(|id| w.state(id) == Some(CellState::Live)));
+        w.h.born("membrane::Req:c", "Req", props(1), "t");   // no slot is left, and none is freed
+        w.turns(300);
+        return;
+    }
+    let me = std::env::current_exe().unwrap();
+    let out = std::process::Command::new(me)
+        .args(["--exact", "a_cell_that_does_not_fit_is_reported_once_however_many_turns_it_waits", "--nocapture", "--test-threads=1"])
+        .env("CLIFFVM_TEST_FULL_TABLE_CHILD", "1").output().unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    let lines: Vec<&str> = err.lines().filter(|l| l.contains("cannot publish")).collect();
+    let mut distinct = lines.clone(); distinct.sort(); distinct.dedup();
+    assert!(!lines.is_empty(), "the waiting cells are not reported at all: {err}");
+    assert_eq!(lines.len(), distinct.len(), "a waiting cell is reported again every turn: {} lines, {} distinct", lines.len(), distinct.len());
+}
