@@ -1203,6 +1203,8 @@ impl Host {
         if self.eng().0.unloaded.contains_key(eid) { self.ensure_loaded(eid, self.now()); self.settle_loaded(); }
         self.eng().0.docs.get(eid).map(|e| e.props.clone())
     }
+    /// Whether an entity exists: loaded, or stored and not loaded yet.
+    pub fn exists(&self, eid: &str) -> bool { let e = self.eng(); e.0.docs.contains_key(eid) || e.0.unloaded.contains_key(eid) }
     /// The ids of the LOADED entities that start with `prefix`, sorted (a lazy class that was never referenced may list none: the rule of `instances`).
     pub fn eids_with_prefix(&self, prefix: &str) -> Vec<String> {
         let mut v: Vec<String> = self.eng().0.docs.keys().filter(|k| k.starts_with(prefix)).cloned().collect();

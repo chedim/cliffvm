@@ -22,16 +22,31 @@ fn props(v: i64) -> Map<String, J> { let mut m = Map::new(); m.insert("v".into()
 struct World { h: Host, peers: Peers, ctl: Shm, link: Link, sc: CellsReader, mine: Cells, rec: Reclaim, name: String }
 
 impl World {
-    fn start(slots: u64) -> World {
+    fn start(slots: u64) -> World { World::start_with(slots, None) }
+    fn start_with(slots: u64, pack: Option<(&str, &str)>) -> World { World::boot(slots, pack, None) }
+    /// `door`: with a door secret the peer's entry says its namespace (and its `grants`, when given), and the peer's hello carries the token the seat minted for it
+    fn boot(slots: u64, pack: Option<(&str, &str)>, door: Option<Option<J>>) -> World {
         let name = format!("r{}x{}", std::process::id() % 100000, common::unique().rsplit('-').next().unwrap());
         let mut o = Options::new(None); o.effects = false;
         let h = Host::open(o).unwrap();
-        let decl = json!([{"name": name, "ring_bytes": 65536, "slots": slots, "key_cap": 128, "val_cap": 256, "spins": SPINS, "depth": DEPTH}]);
-        let peers = Peers::from_fact("membrane", &decl, None, 0.0).unwrap();
+        if let Some((n, text)) = pack { h.load_pack(n, text).unwrap(); }
+        let mut entry = json!({"name": name, "ring_bytes": 65536, "slots": slots, "key_cap": 128, "val_cap": 256, "spins": SPINS, "depth": DEPTH});
+        let mut auth = None;
+        let mut dir = None;
+        if let Some(grants) = &door {
+            entry["ns"] = json!("tester");
+            if let Some(g) = grants { entry["grants"] = g.clone(); }
+            let d = std::env::temp_dir().join(format!("cliffvm-grants-{name}"));
+            auth = Some(cliffvm::admin::PeerAuth { secret: vec![7u8; 32], dir: d.clone(), ttl: 3600.0 });
+            dir = Some(d);
+        }
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
+        let peers = Peers::from_fact("membrane", &json!([entry]), auth, now).unwrap();
         let ctl = Shm::attach(format!("/gl-{name}-ctl")).unwrap();
         let mine = Cells::create(format!("/gl-{name}-pc"), 8, 128, 256, 1).unwrap();   // the peer's own table: the seat reads it, and the peer's acknowledgements go in it
         let sc = CellsReader::attach(format!("/gl-{name}-sc")).unwrap();
-        let link = Link::new(Me { ns: "tester".into(), build: "t".into(), epoch: 1.0, support: vec![VERSION], initiator: false });
+        let mut link = Link::new(Me { ns: "tester".into(), build: "t".into(), epoch: 1.0, support: vec![VERSION], initiator: false });
+        if let Some(d) = &dir { link = link.with_token(std::fs::read_to_string(d.join(format!("{name}.token"))).unwrap().trim().to_string()); let _ = std::fs::remove_dir_all(d); }
         let mut w = World { h, peers, ctl, link, sc, mine, rec: Reclaim::new(), name };
         // the handshake: the seat's hello, ours, then the subscription to the prefix
         for _ in 0..50 { w.turn(); if w.link.is_open() { break; } }
@@ -112,4 +127,60 @@ fn a_cell_that_does_not_fit_is_reported_once_however_many_turns_it_waits() {
     let mut distinct = lines.clone(); distinct.sort(); distinct.dedup();
     assert!(!lines.is_empty(), "the waiting cells are not reported at all: {err}");
     assert_eq!(lines.len(), distinct.len(), "a waiting cell is reported again every turn: {} lines, {} distinct", lines.len(), distinct.len());
+}
+
+#[test]
+fn an_accepted_write_a_peer_asks_for_creates_the_entity_of_a_class_a_pack_owns() {
+    // the driver applied an accepted write as an outside write, and the host drops an outside write to an entity that does not exist when a pack owns its class: the peer got `accepted` and nothing happened.
+    // The driver creates the entity (as it makes the `LinkWrite` it asks the verdict of) and then writes.
+    let pack = "PACK lk 1\nLinkWrite.verdict getter: 'accept'\nOwned.kind getter: 'owned'\n";
+    let mut w = World::start_with(16, Some(("lk", pack)));
+    let f = w.link.send(vec![Op::Wr { wid: "w1".into(), id: "Owned:made".into(), prop: "v".into(), value: json!(7) }]).unwrap();
+    w.ctl.send(&f).unwrap();
+    w.wait("the write of a missing entity of an owned class never made it", |w| w.h.get("Owned:made", "v") == json!(7));
+    assert_eq!(w.h.get("Owned:made", "kind"), json!("owned"), "the entity is of the class the pack owns");
+}
+
+/// a stand-in for the seat's policy (babyseat's packs/link.c1f): accept when one of the grants is a prefix of the id
+const GRANT_POLICY: &str = "PACK lk 1\nLinkWrite.verdict getter: 'accept' if len([g for g in this.grants if g == '*' or startswith(this.id, g)]) > 0 else 'refused: no grant'\nLamp.kind getter: 'lamp'\nDoor.kind getter: 'door'\n";
+
+fn peer_writes(w: &mut World, wid: &str, id: &str) {
+    let f = w.link.send(vec![Op::Wr { wid: wid.into(), id: id.into(), prop: "v".into(), value: json!(1) }]).unwrap();
+    w.ctl.send(&f).unwrap();
+}
+
+#[test]
+fn the_grants_in_a_peers_hello_token_reach_the_write_policy() {
+    let mut w = World::boot(16, Some(("lk", GRANT_POLICY)), Some(Some(json!(["Lamp:"]))));
+    peer_writes(&mut w, "w1", "Lamp:a");
+    peer_writes(&mut w, "w2", "Door:a");
+    w.wait("the granted write never landed", |w| w.h.get("Lamp:a", "v") == json!(1));
+    w.turns(10);
+    assert!(w.h.get("Door:a", "v").is_null(), "a write outside the granted prefixes is refused");
+}
+
+#[test]
+fn the_star_grant_means_every_prefix() {
+    let mut w = World::boot(16, Some(("lk", GRANT_POLICY)), Some(Some(json!(["*"]))));
+    peer_writes(&mut w, "w1", "Door:a");
+    w.wait("a write under `*` never landed", |w| w.h.get("Door:a", "v") == json!(1));
+}
+
+#[test]
+fn a_peer_with_no_grants_claim_has_an_empty_list() {
+    // the policy accepts only when the list is empty (a missing list would be an error, not an empty one)
+    let pack = "PACK lk 1\nLinkWrite.verdict getter: 'accept' if len(this.grants) == 0 else 'refused: grants'\nLamp.kind getter: 'lamp'\n";
+    let mut w = World::boot(16, Some(("lk", pack)), Some(None));
+    peer_writes(&mut w, "w1", "Lamp:a");
+    w.wait("a peer without grants never got an empty list", |w| w.h.get("Lamp:a", "v") == json!(1));
+}
+
+#[test]
+fn bad_grants_in_the_fact_stop_the_start_and_name_the_peer() {
+    for bad in [json!("Lamp:"), json!([""]), json!([1]), json!(["Lamp:", ""])] {
+        let entry = json!([{"name": "gbad", "ring_bytes": 65536, "slots": 8, "key_cap": 128, "val_cap": 256, "spins": SPINS, "depth": DEPTH, "ns": "tester", "grants": bad}]);
+        let auth = cliffvm::admin::PeerAuth { secret: vec![7u8; 32], dir: std::env::temp_dir().join("cliffvm-grants-gbad"), ttl: 3600.0 };
+        let e = Peers::from_fact("membrane", &entry, Some(auth), 0.0).err().expect("a bad grants must stop the start");
+        assert!(e.contains("grants") && e.contains("gbad"), "{e}");
+    }
 }
