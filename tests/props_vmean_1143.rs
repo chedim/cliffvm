@@ -9,7 +9,7 @@ use std::collections::HashMap;
 /// a field of a few entities: `v` vectors, a list `ids`, a dict `d`, a plain `n`
 struct W(HashMap<(String, String), V>);
 impl expr::World for W {
-    fn attr(&self, eid: &str, attr: &str) -> V { self.0.get(&(eid.to_string(), attr.to_string())).cloned().unwrap_or_else(|| V::Nil(format!("absent: {eid}.{attr}"))) }
+    fn attr(&self, eid: &str, attr: &str) -> V { self.0.get(&(eid.to_string(), attr.to_string())).cloned().unwrap_or_else(|| V::absent(format!("{eid}.{attr}"))) }
 }
 fn world() -> W {
     let mut m = HashMap::new();
@@ -31,7 +31,7 @@ fn run(src: &str) -> Result<V, String> {
     expr::eval(&n, &HashMap::new(), &world())
 }
 fn ok(src: &str) -> J { expr::to_json(&run(src).unwrap_or_else(|e| panic!("{src}: {e}"))).unwrap() }
-fn err(src: &str) -> String { match run(src) { Err(e) => e, Ok(V::Error(e)) => e, Ok(v) => panic!("{src}: not an error: {v:?}") } }
+fn err(src: &str) -> String { match run(src) { Err(e) => e, Ok(V::Error(e)) => e.text(), Ok(v) => panic!("{src}: not an error: {v:?}") } }
 /// `src` evaluated under a budget of `b` steps
 fn within(src: &str, env: Vec<(&str, J)>, b: u64) -> Result<V, String> {
     let n = expr::parse(src).unwrap();
@@ -56,7 +56,7 @@ fn props_keeps_a_null_where_an_entity_has_no_such_property_or_the_item_is_null()
     let v = run("props(['A:1', 'A:9', None], 'n')").unwrap();
     let V::List(l) = v else { panic!("{v:?}") };
     assert!(matches!(&l[0], V::Int(10)));
-    assert!(matches!(&l[1], V::Nil(r) if r.contains("absent")), "the read's own reason: {:?}", l[1]);
+    assert!(matches!(&l[1], V::Nil(r) if r.text().contains("absent")), "the read's own reason: {:?}", l[1]);
     assert!(matches!(&l[2], V::None | V::Nil(_)));
     assert_eq!(ok("props([{'n': 5}], 'n')"), json!([5]), "a dict item reads its key, as prop does");
 }
@@ -109,7 +109,7 @@ fn vmean_gives_the_same_bits_as_the_c1f_it_replaces() {
 fn vmean_skips_the_ids_with_no_vector_and_the_nulls() {
     assert_eq!(ok("vmean(['A:9', 'A:1', None, 'A:8'])"), ok("vmean(['A:1'])"));
     let v = run("vmean(['A:9', None])").unwrap();
-    assert!(matches!(&v, V::Nil(r) if r.contains("empty") && r.contains("2 ids")), "none has a vector: a null that says so: {v:?}");
+    assert!(matches!(&v, V::Nil(r) if r.text().contains("empty") && r.text().contains("2 ids")), "none has a vector: a null that says so: {v:?}");
     assert!(matches!(run("vmean([])").unwrap(), V::Nil(_)));
 }
 

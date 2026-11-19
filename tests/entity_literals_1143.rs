@@ -21,8 +21,8 @@ fn ev(src: &str, env: &[(&str, V)]) -> V {
 }
 fn eqv(a: &V, b: &V) { assert!(expr::py_eq(a, b), "{a:?} != {b:?}"); }
 fn ent(v: V) -> String { match v { V::Ent(e) => e, o => panic!("not an entity: {o:?}") } }
-fn nil(v: V) -> String { match v { V::Nil(r) => r, o => panic!("not a reasoned null: {o:?}") } }
-fn fail(v: V) -> String { match v { V::Error(r) => r, o => panic!("not an Error: {o:?}") } }
+fn nil(v: V) -> String { match v { V::Nil(r) => r.text(), o => panic!("not a reasoned null: {o:?}") } }
+fn fail(v: V) -> String { match v { V::Error(r) => r.text(), o => panic!("not an Error: {o:?}") } }
 
 #[test]
 fn an_unquoted_name_is_an_entity_in_an_expression() {
