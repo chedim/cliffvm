@@ -22,10 +22,12 @@ fn props(v: i64) -> Map<String, J> { let mut m = Map::new(); m.insert("v".into()
 struct World { h: Host, peers: Peers, ctl: Shm, link: Link, sc: CellsReader, mine: Cells, rec: Reclaim, name: String }
 
 impl World {
-    fn start(slots: u64) -> World {
+    fn start(slots: u64) -> World { World::start_with(slots, None) }
+    fn start_with(slots: u64, pack: Option<(&str, &str)>) -> World {
         let name = format!("r{}x{}", std::process::id() % 100000, common::unique().rsplit('-').next().unwrap());
         let mut o = Options::new(None); o.effects = false;
         let h = Host::open(o).unwrap();
+        if let Some((n, text)) = pack { h.load_pack(n, text).unwrap(); }
         let decl = json!([{"name": name, "ring_bytes": 65536, "slots": slots, "key_cap": 128, "val_cap": 256, "spins": SPINS, "depth": DEPTH}]);
         let peers = Peers::from_fact("membrane", &decl, None, 0.0).unwrap();
         let ctl = Shm::attach(format!("/gl-{name}-ctl")).unwrap();
@@ -112,4 +114,16 @@ fn a_cell_that_does_not_fit_is_reported_once_however_many_turns_it_waits() {
     let mut distinct = lines.clone(); distinct.sort(); distinct.dedup();
     assert!(!lines.is_empty(), "the waiting cells are not reported at all: {err}");
     assert_eq!(lines.len(), distinct.len(), "a waiting cell is reported again every turn: {} lines, {} distinct", lines.len(), distinct.len());
+}
+
+#[test]
+fn an_accepted_write_a_peer_asks_for_creates_the_entity_of_a_class_a_pack_owns() {
+    // the driver applied an accepted write as an outside write, and the host drops an outside write to an entity that does not exist when a pack owns its class: the peer got `accepted` and nothing happened.
+    // The driver creates the entity (as it makes the `LinkWrite` it asks the verdict of) and then writes.
+    let pack = "PACK lk 1\nLinkWrite.verdict getter: 'accept'\nOwned.kind getter: 'owned'\n";
+    let mut w = World::start_with(16, Some(("lk", pack)));
+    let f = w.link.send(vec![Op::Wr { wid: "w1".into(), id: "Owned:made".into(), prop: "v".into(), value: json!(7) }]).unwrap();
+    w.ctl.send(&f).unwrap();
+    w.wait("the write of a missing entity of an owned class never made it", |w| w.h.get("Owned:made", "v") == json!(7));
+    assert_eq!(w.h.get("Owned:made", "kind"), json!("owned"), "the entity is of the class the pack owns");
 }
