@@ -337,7 +337,13 @@ impl Peer {
             h.born(&q, "LinkWrite", props, WRITER);
             let verdict = h.get(&q, "verdict");
             h.write(&q, "retire", json!(true), WRITER);   // the question has its answer: it goes
-            if verdict.as_str() == Some("accept") { h.write(&id, &prop, value, &format!("link:{ns}")); None }
+            if verdict.as_str() == Some("accept") {
+                let writer = format!("link:{ns}");
+                // an outside write to an entity that does not exist is dropped when a pack owns its class: the peer would get `accepted` and nothing would happen, so the driver makes it first (as it makes the `LinkWrite` above)
+                if !h.exists(&id) { h.born(&id, &crate::host::class_of_eid(&id), Map::new(), &writer); }
+                h.write(&id, &prop, value, &writer);
+                None
+            }
             else { Some(verdict.as_str().map(str::to_string).unwrap_or_else(|| "refused: the policy gave no verdict".into())) }
         })();
         if let Ok(f) = self.link.send(vec![Op::Res { wid, refused }]) { self.say(&f); }
