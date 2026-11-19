@@ -43,7 +43,15 @@ fn is_and_why_and_a_null_test_read_an_error_without_propagating() {
     assert_eq!(ty("x is Error", &e), "Bool");
     assert_eq!(ty("x is not Error", &e), "Bool");
     assert_eq!(ty("x == None", &e), "Bool");
-    assert_eq!(ty("why(x)", &e), "Text?");
+    assert_eq!(ty("why(x)", &e), "Any");   // a reason is a text or an entity (cliffvm 0.3.0): the type does not claim Text
+}
+
+#[test]
+fn the_class_and_text_of_a_reason_read_without_a_finding() {
+    let e = [("x", "Int | Error")];
+    assert!(found("why(x).cls", &e).is_empty(), "{:?}", found("why(x).cls", &e));
+    assert!(found("why(x).text", &e).is_empty(), "{:?}", found("why(x).text", &e));
+    assert!(found("why(x) is Refused", &e).is_empty(), "{:?}", found("why(x) is Refused", &e));
 }
 
 #[test]
