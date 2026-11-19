@@ -48,7 +48,7 @@ impl Vm {
         self.seq = s;
     }
     fn prop(&self, eid: &str, p: &str) -> J { self.c.docs.get(eid).and_then(|e| e.props.get(p).cloned()).unwrap_or(J::Null) }
-    fn why(&self, eid: &str, p: &str) -> String { self.c.why.get(&(eid.to_string(), p.to_string())).cloned().unwrap_or_default() }
+    fn why(&self, eid: &str, p: &str) -> String { self.c.why.get(&(eid.to_string(), p.to_string())).map(|r| r.text()).unwrap_or_default() }
 }
 
 const PACK_ONE: &str = "PACK t 1\nLight.title getter: membrane::Setting:t.val\n";
@@ -166,7 +166,7 @@ fn without_a_namespace_nothing_is_foreign() {
     let mut seq = 0;
     f.arrive(&mut c, "Light:a".into(), "Light".into(), Map::new(), 1.0);
     f.settle(&mut c, &H, 1.0, &mut seq);
-    assert!(c.why.get(&("Light:a".to_string(), "title".to_string())).map_or(true, |r| r.starts_with("absent")));
+    assert!(c.why.get(&("Light:a".to_string(), "title".to_string())).map_or(true, |r| r.text().starts_with("absent")));
     assert!(f.link_drain().0.is_empty());
 }
 

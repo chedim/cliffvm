@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 struct W(HashMap<(String, String), V>);
 impl expr::World for W {
-    fn attr(&self, eid: &str, attr: &str) -> V { self.0.get(&(eid.to_string(), attr.to_string())).cloned().unwrap_or_else(|| V::Nil(format!("absent: {eid}.{attr}"))) }
+    fn attr(&self, eid: &str, attr: &str) -> V { self.0.get(&(eid.to_string(), attr.to_string())).cloned().unwrap_or_else(|| V::absent(format!("{eid}.{attr}"))) }
 }
 fn world() -> W {
     let mut m = HashMap::new();
@@ -19,7 +19,7 @@ fn run(src: &str) -> Result<V, String> {
     expr::eval(&n, &HashMap::new(), &world())
 }
 fn ok(src: &str) -> J { expr::to_json(&run(src).unwrap_or_else(|e| panic!("{src}: {e}"))).unwrap() }
-fn err(src: &str) -> String { match run(src) { Err(e) => e, Ok(V::Error(e)) => e, Ok(v) => panic!("{src}: not an error: {v:?}") } }
+fn err(src: &str) -> String { match run(src) { Err(e) => e, Ok(V::Error(e)) => e.text(), Ok(v) => panic!("{src}: not an error: {v:?}") } }
 
 #[test]
 fn the_keys_of_a_dict_come_in_the_order_it_holds_them() {

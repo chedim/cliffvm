@@ -12,7 +12,7 @@ fn run(src: &str, env: &[(&str, V)]) -> Result<V, String> {
     let env: HashMap<String, V> = env.iter().map(|(k, v)| (k.to_string(), v.clone())).collect();
     eval(&parse(src)?, &env, &W)
 }
-fn why(v: &V) -> Option<String> { if let V::Nil(r) = v { Some(r.clone()) } else { None } }
+fn why(v: &V) -> Option<String> { if let V::Nil(r) = v { Some(r.text()) } else { None } }
 fn pending() -> V { V::Nil("pending: read(/a)".into()) }
 
 #[test]

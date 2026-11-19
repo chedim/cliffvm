@@ -14,7 +14,7 @@ fn run(src: &str, env: &[(&str, V)]) -> V {
     let env: HashMap<String, V> = env.iter().map(|(k, v)| (k.to_string(), v.clone())).collect();
     eval(&parse_block(src).or_else(|_| parse(src)).unwrap(), &env, &W).unwrap_or_else(|e| panic!("{src}: {e}"))
 }
-fn reason(v: &V) -> Option<String> { if let V::Error(r) = v { Some(r.clone()) } else { None } }
+fn reason(v: &V) -> Option<String> { if let V::Error(r) = v { Some(r.text()) } else { None } }
 
 #[test]
 fn a_failed_cast_is_an_error_a_cast_of_a_null_is_that_null() {
@@ -45,11 +45,11 @@ fn a_bad_entity_literal_key_is_an_error_a_null_key_keeps_its_own_null() {
 fn json_of_text_that_is_not_json_is_an_error_with_a_reason() {
     // operator decision 2026-11-13: bad text is a failed parse, an Error (the packs that meant "not JSON is fine" test it with `is Error`)
     for bad in ["json('{not json')", "json('')", "json('nope')"] {
-        assert!(matches!(run(bad, &[]), V::Error(ref r) if r.starts_with("not-json")), "{bad}: {:?}", run(bad, &[]));
+        assert!(matches!(run(bad, &[]), V::Error(ref r) if r.text().starts_with("not-json")), "{bad}: {:?}", run(bad, &[]));
     }
     assert!(matches!(run("json('{\"a\": 1}')", &[]), V::Dict(_)));
     assert!(matches!(run("json(n)", &[("n", V::None)]), V::None), "a null stays a null");
-    assert!(matches!(run("json(e)", &[("e", V::Error("x".into()))]), V::Error(ref r) if r == "x"), "an Error propagates");
+    assert!(matches!(run("json(e)", &[("e", V::Error("x".into()))]), V::Error(ref r) if r.text() == "x"), "an Error propagates");
     assert!(matches!(run("json('{bad') == None", &[]), V::Bool(false)), "an Error is not a null");
 }
 
@@ -84,7 +84,7 @@ fn world(pack: &str, props: J) -> (Core, Fields) {
 }
 fn val(c: &Core, p: &str) -> J { c.docs["Box:a"].props.get(p).cloned().unwrap_or(J::Null) }
 fn failed(c: &Core, p: &str) -> bool { c.docs["Box:a"].failure(p).is_some() }
-fn why(c: &Core, p: &str) -> Option<String> { c.reason_of(&("Box:a".to_string(), p.to_string())) }
+fn why(c: &Core, p: &str) -> Option<String> { c.reason_of(&("Box:a".to_string(), p.to_string())).map(|r| r.text()) }
 
 #[test]
 fn a_getter_body_that_raised_is_an_error_with_the_raised_text_and_a_receipt_still_names_the_getter() {

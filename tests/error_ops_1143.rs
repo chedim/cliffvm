@@ -13,7 +13,7 @@ fn run(src: &str, env: &[(&str, V)]) -> Result<V, String> {
     eval(&parse_block(src).or_else(|_| parse(src))?, &env, &W)
 }
 fn e(t: &str) -> V { V::Error(t.into()) }
-fn reason(v: &V) -> Option<String> { if let V::Error(r) = v { Some(r.clone()) } else { None } }
+fn reason(v: &V) -> Option<String> { if let V::Error(r) = v { Some(r.text()) } else { None } }
 fn env() -> Vec<(&'static str, V)> { vec![("e", e("boom")), ("f", e("second")), ("n", V::None), ("p", V::Nil("pending: read(/a)".into())), ("ent", V::Ent("A:x".into()))] }
 fn gives_error(src: &str, want: &str) { let r = run(src, &env()).unwrap_or_else(|x| panic!("{src} raised {x}")); assert_eq!(reason(&r).as_deref(), Some(want), "{src} -> {r:?}"); }
 fn truth(src: &str) -> bool { match run(src, &env()).unwrap_or_else(|x| panic!("{src}: {x}")) { V::Bool(b) => b, v => panic!("{src} -> {v:?}") } }

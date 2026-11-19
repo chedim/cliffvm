@@ -116,14 +116,59 @@ impl Budget {
 /// What one evaluation carries: its budget, its depth, and (when asked) the locals it bound, in order.
 struct Meter { b: Budget, depth: usize, locals: Option<Vec<(String, V)>> }
 
+
+/// WHY a value is null or an Error (#1143): a text, or an entity. The engine's own reasons are entities of four classes (`Pending`, `Absent`, `Refused`, `Collected`), so a pack
+/// asks `why(x).cls == 'Refused'` instead of matching text; a pack's own `None('...')` and `Error('...')` stay text, and `None(<entity>)` / `Error(<entity>)` keep the entity.
+/// An engine reason is a SYNTHETIC entity: its id is `<Class>:<detail>` (equal reasons are the same entity), it has no row and costs no more than the text did; it answers
+/// `cls`, `text` (the reason as text, `<class lowercase>: <detail>`) and nothing else (`reason_attr`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Reason { Text(String), Ent(String) }
+/// The classes of the engine's own reasons.
+pub const REASON_CLASSES: [&str; 4] = ["Pending", "Absent", "Refused", "Collected"];
+impl Reason {
+    /// An engine reason: `Pending:<detail>` and so on (the class must be one of `REASON_CLASSES`).
+    pub fn engine(class: &str, detail: impl AsRef<str>) -> Reason { debug_assert!(REASON_CLASSES.contains(&class)); Reason::Ent(format!("{class}:{}", detail.as_ref())) }
+    pub fn pending(detail: impl AsRef<str>) -> Reason { Reason::engine("Pending", detail) }
+    pub fn absent(detail: impl AsRef<str>) -> Reason { Reason::engine("Absent", detail) }
+    pub fn refused(detail: impl AsRef<str>) -> Reason { Reason::engine("Refused", detail) }
+    pub fn collected(detail: impl AsRef<str>) -> Reason { Reason::engine("Collected", detail) }
+    /// The reason as text: a text as it is, an engine reason as `<class lowercase>: <detail>` (the text it always had), another entity as its id.
+    pub fn text(&self) -> String { match self { Reason::Text(t) => t.clone(), Reason::Ent(e) => reason_text(e).unwrap_or_else(|| e.clone()) } }
+    /// The reason as a value: `why(x)` gives this (a text, or the entity).
+    pub fn value(&self) -> V { match self { Reason::Text(t) => V::Str(t.clone()), Reason::Ent(e) => V::Ent(e.clone()) } }
+    /// A value as a reason: an entity stays one, anything else is its text.
+    pub fn of(v: &V) -> Reason { match v { V::Ent(e) => Reason::Ent(e.clone()), v => Reason::Text(py_str(v)) } }
+    /// Stored form (the `failed` map of an entity is JSON): a text is a JSON text, an entity is `{"$ent": id}`.
+    pub fn to_json(&self) -> serde_json::Value { match self { Reason::Text(t) => serde_json::Value::String(t.clone()), Reason::Ent(e) => serde_json::json!({"$ent": e}) } }
+    pub fn from_json(j: &serde_json::Value) -> Option<Reason> {
+        match j { serde_json::Value::String(t) => Some(Reason::Text(t.clone())), serde_json::Value::Object(o) => o.get("$ent").and_then(|e| e.as_str()).map(|e| Reason::Ent(e.to_string())), _ => None }
+    }
+}
+/// A reason is equal to a text when its text is (an engine reason by its `text()`).
+impl PartialEq<str> for Reason { fn eq(&self, o: &str) -> bool { self.text() == o } }
+impl PartialEq<&str> for Reason { fn eq(&self, o: &&str) -> bool { self.text() == *o } }
+impl From<String> for Reason { fn from(t: String) -> Reason { Reason::Text(t) } }
+impl From<&str> for Reason { fn from(t: &str) -> Reason { Reason::Text(t.to_string()) } }
+impl std::fmt::Display for Reason { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.text()) } }
+/// The class of an engine reason's id (`Refused:boom` is a `Refused`), None for any other id.
+pub fn reason_class(eid: &str) -> Option<&'static str> { let (c, _) = eid.split_once(':')?; REASON_CLASSES.iter().find(|k| **k == c).copied() }
+/// An engine reason's text: `Refused:boom` is `refused: boom`.
+pub fn reason_text(eid: &str) -> Option<String> { let c = reason_class(eid)?; Some(format!("{}: {}", c.to_lowercase(), &eid[c.len() + 1..])) }
+/// An engine reason as the text it always was (None for any other value).
+pub fn reason_as_text(v: &V) -> Option<V> { match v { V::Ent(e) => reason_text(e).map(V::Str), _ => None } }
+/// What a synthetic reason entity answers to a read: its class and its text; any other property is not there.
+pub fn reason_attr(eid: &str, attr: &str) -> Option<V> {
+    let c = reason_class(eid)?;
+    Some(match attr { "eid" => V::Str(eid.to_string()), "cls" => V::Str(c.to_string()), "text" => V::Str(reason_text(eid)?), _ => V::absent(format!("{eid}.{attr}")) })
+}
 #[derive(Clone, Debug)]
 pub enum V {
     None,
     /// A null that says why: `pending: read(/a)`, `error: ...`, `absent ...` (nulls propagate like SQL's; operator 2026-11-12)
-    Nil(String),
+    Nil(Reason),
     /// A FAILURE (#1143, docs/c1f-error.md): carries its reason, the remedy being part of the text. Not a null: `x == None` is False for it, it
     /// propagates through every operation that uses it, and `x is Error` is the test. Stored, it is a plain null (the kind lives in `Core.why`).
-    Error(String),
+    Error(Reason),
     Bool(bool),
     Int(i64),
     Float(f64),
@@ -131,6 +176,18 @@ pub enum V {
     List(Vec<V>),
     Dict(Vec<(String, V)>),
     Ent(String),
+}
+
+impl V {
+    /// A null that says why (a text, or a `Reason`).
+    pub fn nil(r: impl Into<Reason>) -> V { V::Nil(r.into()) }
+    /// A failure with its reason.
+    pub fn err(r: impl Into<Reason>) -> V { V::Error(r.into()) }
+    /// The engine's own reasoned nulls (entities of the classes `Pending`, `Absent`, `Refused`, `Collected`).
+    pub fn pending(detail: impl AsRef<str>) -> V { V::Nil(Reason::pending(detail)) }
+    pub fn absent(detail: impl AsRef<str>) -> V { V::Nil(Reason::absent(detail)) }
+    pub fn refused(detail: impl AsRef<str>) -> V { V::Nil(Reason::refused(detail)) }
+    pub fn collected(detail: impl AsRef<str>) -> V { V::Nil(Reason::collected(detail)) }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -703,8 +760,8 @@ pub const PATH_SEP: char = '\u{1}';
 
 /// The reasoned nulls INSIDE a list or a dict, each as (path, reason): the path is the list indexes and dict keys down to it, joined by `PATH_SEP`.
 /// A stored value is JSON, where every null is plain; the engine remembers these beside it (`Core.why`) so that a read of the stored value gives them back.
-pub fn nested_nulls(v: &V) -> Vec<(String, String)> {
-    fn walk(v: &V, path: &mut Vec<String>, out: &mut Vec<(String, String)>) {
+pub fn nested_nulls(v: &V) -> Vec<(String, Reason)> {
+    fn walk(v: &V, path: &mut Vec<String>, out: &mut Vec<(String, Reason)>) {
         match v {
             V::List(l) => for (i, x) in l.iter().enumerate() { path.push(i.to_string()); walk(x, path, out); path.pop(); },
             V::Dict(d) => for (k, x) in d { path.push(k.clone()); walk(x, path, out); path.pop(); },
@@ -718,10 +775,10 @@ pub fn nested_nulls(v: &V) -> Vec<(String, String)> {
 }
 
 /// `nested_nulls` read back: the null at each path becomes the reasoned null again (a path that no longer fits the value is skipped).
-pub fn overlay_nulls(v: &mut V, nulls: &[(String, String)]) {
-    fn put(v: &mut V, path: &[&str], reason: &str) {
+pub fn overlay_nulls(v: &mut V, nulls: &[(String, Reason)]) {
+    fn put(v: &mut V, path: &[&str], reason: &Reason) {
         match path.split_first() {
-            None => if matches!(v, V::None) { *v = V::Nil(reason.to_string()); },
+            None => if matches!(v, V::None) { *v = V::Nil(reason.clone()); },
             Some((step, rest)) => match v {
                 V::List(l) => if let Some(x) = step.parse::<usize>().ok().and_then(|i| l.get_mut(i)) { put(x, rest, reason); },
                 V::Dict(d) => if let Some((_, x)) = d.iter_mut().find(|(k, _)| k == step) { put(x, rest, reason); },
@@ -732,7 +789,7 @@ pub fn overlay_nulls(v: &mut V, nulls: &[(String, String)]) {
     for (path, reason) in nulls { put(v, &path.split(PATH_SEP).collect::<Vec<_>>(), reason); }
 }
 
-fn shown_marker(key: &str, reason: &str) -> serde_json::Value { serde_json::Value::Object(std::iter::once((key.to_string(), serde_json::Value::String(reason.to_string()))).collect()) }
+fn shown_marker(key: &str, reason: &Reason) -> serde_json::Value { serde_json::Value::Object(std::iter::once((key.to_string(), serde_json::Value::String(reason.text()))).collect()) }
 /// A value as JSON text for a person or a model to read (`str` of a list or a dict, the clifflet's printout): like `to_json`, except that a reasoned null
 /// INSIDE a container is written `{"$null": "<reason>"}` so the reason is on the page. (`to_json`, what is stored and sent, keeps every null plain.)
 pub fn to_json_shown(v: &V) -> Result<serde_json::Value, Err> {
@@ -750,7 +807,7 @@ fn first_error(vals: &[&V]) -> Option<V> { vals.iter().find(|v| matches!(v, V::E
 /// The null an operation on null operands gives: the first reason carried, else `absent`.
 fn null_of(vals: &[&V], what: &str) -> Option<V> {
     for v in vals { if let V::Nil(r) = v { return Some(V::Nil(r.clone())); } }
-    if vals.iter().any(|v| matches!(v, V::None)) { return Some(V::Nil(format!("absent operand of {what}"))); }
+    if vals.iter().any(|v| matches!(v, V::None)) { return Some(V::absent(format!("operand of {what}"))); }
     None
 }
 
@@ -777,6 +834,7 @@ pub fn py_eq(a: &V, b: &V) -> bool {
         (V::Bool(x), V::Bool(y)) => x == y,
         (V::None | V::Nil(_), V::None | V::Nil(_)) => true,
         (V::Str(x), V::Str(y)) => x == y,
+        (V::Ent(e), V::Str(t)) | (V::Str(t), V::Ent(e)) if reason_class(e).is_some() => reason_text(e).as_deref() == Some(t.as_str()),   // `why(x) == 'refused: boom'` still holds
         (V::List(x), V::List(y)) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| py_eq(p, q)),
         (V::Dict(x), V::Dict(y)) => x.len() == y.len() && x.iter().all(|(k, v)| y.iter().any(|(k2, v2)| k == k2 && py_eq(v, v2))),
         (V::Ent(x), V::Ent(y)) => x == y,
@@ -857,6 +915,8 @@ fn vec_arith(op: Op, a: &V, b: &V) -> Result<V, Err> {
 }
 
 pub fn arith(op: Op, a: &V, b: &V) -> Result<V, Err> {
+    let (ta, tb) = (reason_as_text(a), reason_as_text(b));   // an engine reason in arithmetic (`'x: ' + why(y)`) is its text
+    let (a, b) = (ta.as_ref().unwrap_or(a), tb.as_ref().unwrap_or(b));
     if let Some(e) = first_error(&[a, b]) { return Ok(e); }
     if let Some(n) = null_of(&[a, b], "arithmetic") { return Ok(n); }
     if matches!(a, V::List(_)) || matches!(b, V::List(_)) { return vec_arith(op, a, b); }
@@ -897,6 +957,8 @@ fn extreme(args: &[V], want: std::cmp::Ordering) -> Result<V, Err> {
 }
 
 fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
+    // the builtins that read a text (or a list of them): an engine reason given to one is the text it always was (`len(why(x))`, `head(why(x), 20)`)
+    let a: Vec<V> = if matches!(f, "len" | "head" | "tail" | "clip" | "json" | "plain" | "fit" | "num") { a.into_iter().map(|v| reason_as_text(&v).unwrap_or(v)).collect() } else { a };
     let argn = |n: usize| -> Result<(), Err> { if a.len() == n { Ok(()) } else { Err(format!("{}: takes {} arguments", f, n)) } };
     match f {
         // a cast: Int(x) is x when x is an int, else None('not-a-type: int expected, got text'); a null stays the null it was
@@ -909,14 +971,14 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
                 | ("List", V::List(_)) | ("Dict", V::Dict(_)) => true,
                 _ => false,
             };
-            Ok(if ok { v.clone() } else { V::Error(format!("not-a-type: {} expected, got {}", f.to_lowercase(), kind_of(v))) })
+            Ok(if ok { v.clone() } else { V::err(format!("not-a-type: {} expected, got {}", f.to_lowercase(), kind_of(v))) })
         }
         // Error('reason') makes a failure: the remedy is part of the text (docs/c1f-error.md)
-        "Error" => { argn(1)?; Ok(V::Error(py_str(&a[0]))) }
+        "Error" => { argn(1)?; Ok(V::Error(Reason::of(&a[0]))) }
         // None is a class like any other: None('why') constructs a null that carries its reason (None() says "null")
-        "None" => Ok(V::Nil(match a.len() { 0 => "null".into(), 1 => py_str(&a[0]), _ => return Err("None: takes one reason".into()) })),
+        "None" => Ok(V::Nil(match a.len() { 0 => "null".into(), 1 => Reason::of(&a[0]), _ => return Err("None: takes one reason".into()) })),
         // why(x): the reason a null carries as text (`absent ...`, `error: ...`, `pending: ...`, the text of None('...')); None when x is not a reasoned null
-        "why" => { argn(1)?; Ok(match &a[0] { V::Nil(r) | V::Error(r) => V::Str(r.clone()), _ => V::None }) }
+        "why" => { argn(1)?; Ok(match &a[0] { V::Nil(r) | V::Error(r) => r.value(), _ => V::None }) }
         "dot" => { argn(2)?; let (x, y) = (vec_of(&a[0])?, vec_of(&a[1])?); if x.len() != y.len() { return Err("dot: shapes not aligned".into()); } Ok(V::Float(x.iter().zip(&y).map(|(p, q)| p * q).sum())) }
         "norm" => { argn(1)?; Ok(V::Float(norm(&vec_of(&a[0])?))) }
         "distance" => { argn(2)?; Ok(V::Float(dist(&vec_of(&a[0])?, &vec_of(&a[1])?))) }
@@ -969,7 +1031,7 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
                 for (s, p) in acc.iter_mut().zip(&u) { *s += 1.0f32 * (*p as f32); }
                 n += 1;
             }
-            if n == 0 { return Ok(V::Nil(format!("empty: none of the {} ids has a vector (v)", ids.len()))); }
+            if n == 0 { return Ok(V::nil(format!("empty: none of the {} ids has a vector (v)", ids.len()))); }
             if acc.iter().any(|x| !x.is_finite()) { return Err("vmean: not a finite number (an f32 overflowed)".into()); }
             Ok(floats(acc.into_iter().map(|s| s as f64 / n as f64).collect()))
         }
@@ -1241,7 +1303,7 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
         "epoch" => { argn(1)?; Ok(match &a[0] { V::Int(n) => V::Float(*n as f64), V::Float(f) => V::Float(*f), v => epoch_of(v).map(V::Float).unwrap_or(V::None) }) }
         // ---- time ----
         "localtime" => { argn(1)?; let ts = match &a[0] { V::Int(n) => *n as f64, V::Float(f) => *f, _ => return Err("localtime(ts): a number".into()) }; Ok(crate::clock::local(ts)) }
-        "json" => { argn(1)?; match &a[0] { V::Str(t) => Ok(serde_json::from_str::<serde_json::Value>(t).map(|j| from_json(&j)).unwrap_or_else(|e| V::Error(format!("not-json: {e}")))), V::None | V::Nil(_) => Ok(V::None), _ => Err("json(text): a string".into()) } }
+        "json" => { argn(1)?; match &a[0] { V::Str(t) => Ok(serde_json::from_str::<serde_json::Value>(t).map(|j| from_json(&j)).unwrap_or_else(|e| V::err(format!("not-json: {e}")))), V::None | V::Nil(_) => Ok(V::None), _ => Err("json(text): a string".into()) } }
         "str" => { argn(1)?; Ok(V::Str(match &a[0] { V::Str(t) => t.clone(), V::List(_) | V::Dict(_) => to_json_shown(&a[0])?.to_string(), v => py_str(v) })) }
         "referencing" => {
             argn(2)?;
@@ -1276,14 +1338,14 @@ fn epoch_of(v: &V) -> Option<f64> {
 }
 
 fn text_of(v: &V) -> Result<String, Err> {
-    match v { V::Str(s) => Ok(s.clone()), V::None | V::Nil(_) => Ok(String::new()), V::Error(r) => Err(r.clone()), V::Ent(e) => Ok(e.clone()), V::List(_) | V::Dict(_) => Err("expected text".into()), v => Ok(py_str(v)) }
+    match v { V::Str(s) => Ok(s.clone()), V::None | V::Nil(_) => Ok(String::new()), V::Error(r) => Err(r.text()), V::Ent(e) => Ok(reason_text(e).unwrap_or_else(|| e.clone())), V::List(_) | V::Dict(_) => Err("expected text".into()), v => Ok(py_str(v)) }
 }
 
 pub fn py_str(v: &V) -> String {
     match v {
         V::None | V::Nil(_) => "None".into(), V::Error(r) => format!("Error: {r}"), V::Bool(b) => if *b { "True".into() } else { "False".into() },
         V::Int(i) => i.to_string(), V::Float(f) => format!("{:?}", f), V::Str(s) => s.clone(),
-        V::Ent(e) => e.clone(), _ => format!("{:?}", v),
+        V::Ent(e) => reason_text(e).unwrap_or_else(|| e.clone()), _ => format!("{:?}", v),
     }
 }
 
@@ -1396,7 +1458,7 @@ fn ev_attr(b: &Node, a: &String, env: &Env, w: &dyn World, m: &mut Meter) -> Res
         V::Ent(e) => { if a.starts_with('_') { return Err(format!("no attribute {:?}", a)); } Ok(w.attr(&e, a)) }
         V::Nil(r) => Ok(V::Nil(r)),
         e @ V::Error(_) => Ok(e),
-        V::None => Ok(V::Nil(format!("absent: .{} of an absent value", a))),
+        V::None => Ok(V::absent(format!(".{} of an absent value", a))),
         _ => Err("attributes are read on entities only".into()),
     }
 }
@@ -1442,9 +1504,9 @@ fn ev_ent(parts: &[EntPart], env: &Env, w: &dyn World, m: &mut Meter) -> Result<
                 V::Str(t) if !t.is_empty() => { id.push(':'); id.push_str(&t); }
                 V::Nil(r) => return Ok(V::Nil(r)),
                 e @ V::Error(_) => return Ok(e),
-                V::None => return Ok(V::Error(format!("the key of {} is null", id))),
-                V::Str(_) => return Ok(V::Error(format!("the key of {} is empty text", id))),
-                v => return Ok(V::Error(format!("the key of {} is an integer or text, got a {}", id, kind_of(&v)))),
+                V::None => return Ok(V::err(format!("the key of {} is null", id))),
+                V::Str(_) => return Ok(V::err(format!("the key of {} is empty text", id))),
+                v => return Ok(V::err(format!("the key of {} is an integer or text, got a {}", id, kind_of(&v)))),
             },
         }
     }
@@ -1565,7 +1627,7 @@ fn ev_call(f: &String, args: &[Node], env: &Env, w: &dyn World, m: &mut Meter) -
             let any_null = a.iter().any(nullish);
             let r = call(f, a.clone(), w);
             match r {
-                Err(_) if any_null => Ok(null_of(&a.iter().collect::<Vec<_>>(), f).unwrap_or(V::Nil(format!("error: {f} of a null")))),   // an error caused by a null is a null
+                Err(_) if any_null => Ok(null_of(&a.iter().collect::<Vec<_>>(), f).unwrap_or(V::nil(format!("error: {f} of a null")))),   // an error caused by a null is a null
                 other => other.map_err(|e| if e.starts_with(f.as_str()) || e.contains("built-ins") { e } else { format!("{}: {}", f, e) }),
             }
         }
@@ -1598,6 +1660,7 @@ pub fn to_json(v: &V) -> Result<serde_json::Value, Err> {
         V::Str(s) => J::String(s.clone()),
         V::List(l) => J::Array(l.iter().map(to_json).collect::<Result<_, _>>()?),
         V::Dict(d) => J::Object(d.iter().map(|(k, x)| Ok((k.clone(), to_json(x)?))).collect::<Result<_, Err>>()?),
+        V::Ent(e) if reason_class(e).is_some() => J::String(reason_text(e).unwrap_or_default()),   // an engine reason has no row to point at: stored, it is its text
         V::Ent(e) => J::Object(std::iter::once(("$ref".to_string(), J::String(e.clone()))).collect()),
     })
 }
