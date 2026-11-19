@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde_json::{json, Map, Value as J};
 
-use crate::expr::{self, Node, V};
+use crate::expr::{self, Node, Reason, V};
 
 pub const CLASS: &str = "Trigger";
 pub const QUEUE_MAX: usize = 4096;
@@ -82,7 +82,7 @@ pub const ERROR_CLASS: &str = "Error";
 
 impl Ent {
     /// The reason property `prop` failed with (the entity's `failed` dict), if it did.
-    pub fn failure(&self, prop: &str) -> Option<&str> { self.props.get("failed").and_then(|f| f.as_object()).and_then(|f| f.get(prop)).and_then(|r| r.as_str()) }
+    pub fn failure(&self, prop: &str) -> Option<Reason> { self.props.get("failed").and_then(|f| f.as_object()).and_then(|f| f.get(prop)).and_then(Reason::from_json) }
     /// THE CLASS LIST (#1143): the entity's `parents`, nearest first; the eid class (`cls`) only when it has none (the birth default).
     /// The root `Entity` is implicitly last and is not in the list.
     pub fn class_names(&self) -> Vec<String> {
@@ -203,7 +203,7 @@ pub const TOUCHED: &str = "touched";
 /// The VM-provided, read-only property that says why an entity cannot be unloaded: False when it can, else the reason (text, truthy).
 pub const PINNED: &str = "pinned";
 /// What a read of a collected virtual entity is: a null with this reason.
-pub const COLLECTED: &str = "collected: nothing held it";
+pub const COLLECTED: &str = "nothing held it";
 /// How many collected ids are remembered for that null (a threshold, flagged): older ones read as a plain missing entity.
 pub const COLLECTED_KEPT: usize = 4096;
 
@@ -255,11 +255,11 @@ pub struct Core {
     collected_set: HashSet<String>,
     /// why a null getter value is null: (eid, prop) -> reason. The value itself is stored as a plain JSON null; reading it back through
     /// an expression gives `V::Nil(reason)` so the reason travels (fields.rs writes it, `why_chain` reads it)
-    pub why: std::collections::BTreeMap<(String, String), String>,
+    pub why: std::collections::BTreeMap<(String, String), Reason>,
     /// (entity, property) a getter computed as a plain null (no reason): that null is held, not absent (`View::attr`)
     pub nulled: std::collections::BTreeSet<(String, String)>,
     /// the reasoned nulls inside the list or dict the last `eval_traced` returned (`expr::nested_nulls`), for the getter that stores it
-    pub nested_last: Vec<(String, String)>,
+    pub nested_last: Vec<(String, Reason)>,
     /// the locals a getter's block bound in its last evaluation: (eid, prop) -> name -> value (a null shows its reason). `Why` prints them.
     pub locals: std::collections::BTreeMap<(String, String), serde_json::Map<String, J>>,
     order: Vec<Option<String>>,
@@ -338,36 +338,37 @@ fn bget<'a>(b: &'a Binding, v: &str) -> Option<&'a String> {
 /// What a getter's null value says: a null's note (`absent`, `pending`, `None('why')`) or a FAILURE (`Error`, docs/c1f-error.md). Both are stored as a plain
 /// JSON null; a null's reason lives in `Core.why`, an Error's in the entity's own `failed` property (the class `Error`, `Fields::set_failure`).
 #[derive(Clone, Debug, PartialEq)]
-pub enum Note { Null(String), Error(String) }
-impl Note { pub fn reason(&self) -> &str { match self { Note::Null(r) | Note::Error(r) => r } } pub fn is_error(&self) -> bool { matches!(self, Note::Error(_)) } }
+pub enum Note { Null(Reason), Error(Reason) }
+impl Note { pub fn reason(&self) -> &Reason { match self { Note::Null(r) | Note::Error(r) => r } } pub fn is_error(&self) -> bool { matches!(self, Note::Error(_)) } }
 
 struct View<'a> { core: &'a Core }
 
 impl<'a> expr::World for View<'a> {
     fn attr(&self, eid: &str, attr: &str) -> V {
+        if matches!(eid.as_bytes().first(), Some(b'P' | b'A' | b'R' | b'C')) && !self.core.docs.contains_key(eid) { if let Some(v) = expr::reason_attr(eid, attr) { return v; } }   // an engine reason (`Refused:boom`): a synthetic entity with no row, it answers `cls` and `text` (before the foreign test: its detail may hold a `::`)
         if self.core.own_ns.is_some() { if let Some(v) = self.core.foreign_read(eid, attr) { return v; } }
         let Some(e) = self.core.docs.get(eid) else {
             if self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); return V::None; }   // stored, not loaded: asked for (the host loads it between rounds), not absent
-            if self.core.collected_set.contains(eid) { return V::Nil(COLLECTED.to_string()); }   // a virtual entity nothing held any more: a null that says so
-            return V::Nil(format!("absent: {eid} does not exist"));   // an entity that is not there: a null that says so
+            if self.core.collected_set.contains(eid) { return V::collected(COLLECTED); }   // a virtual entity nothing held any more: a null that says so
+            return V::Nil(Reason::Ent(format!("Absent:{eid} does not exist")));   // an entity that is not there: a null that says so
         };
         match attr {
             "eid" => V::Str(eid.to_string()),
             // the first class of the list (the eid class when it is the first, as written there otherwise)
             "cls" => V::Str(match e.class_names().into_iter().find(|c| !c.eq_ignore_ascii_case(ERROR_CLASS)) { Some(c) if !c.eq_ignore_ascii_case(&e.cls) => c, _ => e.cls.clone() }),
             "position" => e.pos.as_ref().map(|p| V::List(p.iter().map(|x| V::Float(*x)).collect())).unwrap_or(V::None),
-            BORN_BY => match self.core.born_by.get(eid) { Some(b) => V::Str(b.clone()), None => V::Nil(format!("absent: {eid}.{attr}")) },   // provided by the VM, a constant: shadows a stored property of that name
+            BORN_BY => match self.core.born_by.get(eid) { Some(b) => V::Str(b.clone()), None => V::Nil(Reason::Ent(format!("Absent:{eid}.{attr}"))) },   // provided by the VM, a constant: shadows a stored property of that name
             UPDATED => V::Float(self.core.updated.get(eid).copied().unwrap_or(0.0)),   // provided by the VM: shadows a stored property of that name
             TOUCHED if !e.props.contains_key(TOUCHED) => V::Int(e.touched.get() as i64),   // likewise (reading it is no touch), unless the entity stores a property of that name (the Python-era `Turn.touched`): its own wins
             PINNED => match self.core.pinned_reason(eid) { Some(r) => V::Str(r), None => V::Bool(false) },
             _ => { e.touched.set(self.core.bump());
               // the class `Error` overlay: a property listed in the entity's `failed` reads as the Error, whatever it stores (the getter still recomputes under it)
-              if let Some(r) = e.failure(attr) { return V::Error(r.to_string()); }
+              if let Some(r) = e.failure(attr) { return V::Error(r); }
               if attr == VECTOR_PROP && self.core.is_mapped(&e.cls) { return self.core.vector_value(&e.cls, eid); }
               match e.props.get(attr) {
                 Some(j) if !j.is_null() => { let mut v = expr::from_json(j); if matches!(v, V::List(_) | V::Dict(_)) { self.core.overlay_nested(eid, attr, &mut v); } v }
                 // a getter that computed None (`nulled`) is a plain null; a property the entity never had says `absent`, naming both
-                _ => self.core.why.get(&(eid.to_string(), attr.to_string())).map(|r| V::Nil(r.clone())).unwrap_or_else(|| if self.core.nulled.contains(&(eid.to_string(), attr.to_string())) { V::None } else { V::Nil(format!("absent: {eid}.{attr}")) }),
+                _ => self.core.why.get(&(eid.to_string(), attr.to_string())).map(|r| V::Nil(r.clone())).unwrap_or_else(|| if self.core.nulled.contains(&(eid.to_string(), attr.to_string())) { V::None } else { V::Nil(Reason::Ent(format!("Absent:{eid}.{attr}"))) }),
             } },
         }
     }
@@ -602,10 +603,10 @@ impl Core {
         let special = crate::link::is_special(attr);
         if !special { self.foreign_reads.borrow_mut().insert((eid.to_string(), attr.to_string())); }
         match rep.map(|r| &r.state) {
-            Some(crate::link::ReplicaState::Gone) => Some(V::Nil(format!("absent: {eid} does not exist"))),
-            Some(crate::link::ReplicaState::Refused(why)) => Some(V::Nil(format!("refused: {why}"))),
+            Some(crate::link::ReplicaState::Gone) => Some(V::Nil(Reason::Ent(format!("Absent:{eid} does not exist")))),
+            Some(crate::link::ReplicaState::Refused(why)) => Some(V::refused(why)),
             Some(crate::link::ReplicaState::Live) if special || rep.map_or(false, |r| r.have.contains(attr)) => None,
-            _ => Some(V::Nil(format!("pending: {eid}.{attr}"))),
+            _ => Some(V::Nil(Reason::Ent(format!("Pending:{eid}.{attr}")))),
         }
     }
     /// The revisions held: eid -> the last `rev` applied (what a client says in `hello.have`).
@@ -931,7 +932,7 @@ impl Core {
     pub fn eval_json(&mut self, src: &str, vars: &[(&str, &str)], extra: &[(&str, J)]) -> Result<J, String> {
         let mut env: HashMap<String, V> = vars.iter().map(|(k, e)| (k.to_string(), V::Ent(e.to_string()))).collect();
         for (k, v) in extra { env.insert(k.to_string(), expr::from_json(v)); }
-        match self.eval(src, &env)? { V::Error(r) => Err(r), v => expr::to_json(&v) }
+        match self.eval(src, &env)? { V::Error(r) => Err(r.text()), v => expr::to_json(&v) }
     }
 
     /// The value of an expression as the evaluator holds it: an Error stays one (the caller decides: a write of it is refused).
@@ -950,8 +951,8 @@ impl Core {
     }
 
     /// Why (entity, property) is null: a failure's reason (the entity's `failed`) or a null's note.
-    pub fn reason_of(&self, key: &(String, String)) -> Option<String> {
-        self.docs.get(&key.0).and_then(|e| e.failure(&key.1)).map(String::from).or_else(|| self.why.get(key).cloned())
+    pub fn reason_of(&self, key: &(String, String)) -> Option<Reason> {
+        self.docs.get(&key.0).and_then(|e| e.failure(&key.1)).or_else(|| self.why.get(key).cloned())
     }
 
     /// The engine's own built-ins that need the Core: `sql(query, args...)` (the store driver, store.rs). None: not one.
@@ -987,7 +988,7 @@ impl Core {
     pub fn vector_value(&self, cls: &str, eid: &str) -> V {
         match self.vectors.get(cls, eid) {
             Some(w) => V::List(w.iter().map(|h| V::Float(crate::vecstore::f16_to_f32(*h) as f64)).collect()),
-            None => V::Nil(format!("absent: {eid}.v (no vector stored)")),
+            None => V::absent(format!("{eid}.v (no vector stored)")),
         }
     }
 
@@ -1008,7 +1009,7 @@ impl Core {
                 if !f.is_finite() { return Err(format!("near: item {i} of the query is not finite")); }
                 q.push(f as f32);
             }
-            let Some(c) = self.vectors.class(cls).filter(|c| c.len() > 0) else { return Ok(V::Nil(format!("empty: no vectors in class {cls}"))) };
+            let Some(c) = self.vectors.class(cls).filter(|c| c.len() > 0) else { return Ok(V::nil(format!("empty: no vectors in class {cls}"))) };
             if q.len() != c.dim { return Err(format!("near: the query has {} numbers but the vectors of {cls} have {} (dimension)", q.len(), c.dim)); }
             if q.iter().all(|x| *x == 0.0) { return Err("near: the query is all zero: it has no direction to compare".into()); }
             Ok(V::List(c.near(&q, k as usize).into_iter().map(|(e, s)| V::Dict(vec![("eid".to_string(), V::Str(e)), ("score".to_string(), V::Float(s as f64))])).collect()))
@@ -1054,7 +1055,7 @@ impl Core {
             let k = crate::store::scoped(asker, &crate::store::key(q, &args));
             match st.request(asker, q, &args) {
                 crate::store::Poll::Ready(r) => (r.map(|rows| V::List(rows.iter().map(expr::from_json).collect())), Some(k)),
-                crate::store::Poll::Pending => (Ok(V::Nil(format!("pending: sql({})", q.chars().take(48).collect::<String>()))), Some(k)),
+                crate::store::Poll::Pending => (Ok(V::pending(format!("sql({})", q.chars().take(48).collect::<String>()))), Some(k)),
             }
         }
         #[cfg(not(feature = "store"))]
@@ -1079,7 +1080,7 @@ impl Core {
                 });
                 return match st.request_job(&slot, key, true, run) {
                     crate::store::Poll::Ready(r) => (r.map(|mut rows| rows.pop().map(|j| expr::from_json(&j)).unwrap_or(V::None)), Some(k)),
-                    crate::store::Poll::Pending => (Ok(V::Nil(format!("pending: {}(...)", f))), Some(k)),
+                    crate::store::Poll::Pending => (Ok(V::pending(format!("{}(...)", f))), Some(k)),
                 };
             }
         }
@@ -1096,7 +1097,7 @@ impl Core {
             let k = crate::store::scoped(asker, &crate::store::jsonl_key(name));
             match st.request_jsonl(asker, name) {
                 crate::store::Poll::Ready(r) => (r.map(|rows| V::List(rows.iter().map(expr::from_json).collect())), Some(k)),
-                crate::store::Poll::Pending => (Ok(V::Nil(format!("pending: jsonl({name})"))), Some(k)),
+                crate::store::Poll::Pending => (Ok(V::pending(format!("jsonl({name})"))), Some(k)),
             }
         }
         #[cfg(not(feature = "store"))]
@@ -1113,7 +1114,7 @@ impl Core {
             let k = crate::store::scoped(asker, &crate::drivers::key(st, f, path));
             match crate::drivers::request(st, asker, f, path) {
                 crate::store::Poll::Ready(r) => (r.map(|mut rows| rows.pop().map(|j| expr::from_json(&j)).unwrap_or(V::None)), Some(k)),
-                crate::store::Poll::Pending => (Ok(V::Nil(format!("pending: {}({})", f, path))), Some(k)),
+                crate::store::Poll::Pending => (Ok(V::pending(format!("{}({})", f, path))), Some(k)),
             }
         }
         #[cfg(not(feature = "store"))]
@@ -1155,7 +1156,7 @@ impl Core {
     /// The key a nested reasoned null of (eid, prop) is remembered under in `why`: the property, a NUL, the path.
     fn nested_key(prop: &str, path: &str) -> String { format!("{prop}\u{0}{path}") }
     /// A getter stored a list or a dict: remember the reasoned nulls inside it (JSON keeps them plain), replacing what the last value had.
-    pub fn set_nested(&mut self, eid: &str, prop: &str, nulls: Vec<(String, String)>) {
+    pub fn set_nested(&mut self, eid: &str, prop: &str, nulls: Vec<(String, Reason)>) {
         let lo = (eid.to_string(), Self::nested_key(prop, ""));
         let old: Vec<(String, String)> = self.why.range(lo..).take_while(|(k, _)| k.0 == eid && k.1.starts_with(&format!("{prop}\u{0}"))).map(|(k, _)| k.clone()).collect();
         for k in old { self.why.remove(&k); }
@@ -1165,7 +1166,7 @@ impl Core {
     fn overlay_nested(&self, eid: &str, prop: &str, v: &mut V) {
         let pre = format!("{prop}\u{0}");
         let lo = (eid.to_string(), pre.clone());
-        let nulls: Vec<(String, String)> = self.why.range(lo..).take_while(|(k, _)| k.0 == eid && k.1.starts_with(&pre)).map(|(k, r)| (k.1[pre.len()..].to_string(), r.clone())).collect();
+        let nulls: Vec<(String, Reason)> = self.why.range(lo..).take_while(|(k, _)| k.0 == eid && k.1.starts_with(&pre)).map(|(k, r)| (k.1[pre.len()..].to_string(), r.clone())).collect();
         if !nulls.is_empty() { expr::overlay_nulls(v, &nulls); }
     }
 
@@ -1175,7 +1176,7 @@ impl Core {
         match self.eval(src, &env)? {
             V::List(l) => l.into_iter().map(|v| match v { V::Ent(e) => Ok(Item::Ent(e)), v => expr::to_json(&v).map(Item::Val) }).collect(),
             V::None | V::Nil(_) => Ok(vec![]),
-            V::Error(r) => Err(r),
+            V::Error(r) => Err(r.text()),
             other => Err(format!("not a list ({})", expr::to_json(&other).map(|j| j.to_string()).unwrap_or_else(|_| "an entity".into()))),
         }
     }
@@ -1183,7 +1184,7 @@ impl Core {
     /// A setter local's value: an entity (bound as one) or a value (a null stays null).
     pub fn eval_item(&mut self, src: &str, vars: &[(&str, &str)], extra: &[(&str, J)]) -> Result<Item, String> {
         let env = Self::env_of(vars, extra);
-        match self.eval(src, &env)? { V::Ent(e) => Ok(Item::Ent(e)), V::Error(r) => Err(r), v => expr::to_json(&v).map(Item::Val) }
+        match self.eval(src, &env)? { V::Ent(e) => Ok(Item::Ent(e)), V::Error(r) => Err(r.text()), v => expr::to_json(&v).map(Item::Val) }
     }
 
     /// A write's target: an entity, or the id of one (a string).
@@ -1196,7 +1197,7 @@ impl Core {
         let env = Self::env_of(vars, extra);
         match self.eval(src, &env) {
             Ok(V::Ent(e)) | Ok(V::Str(e)) => Ok(e),
-            Ok(V::Nil(r)) | Ok(V::Error(r)) => Err(r),
+            Ok(V::Nil(r)) | Ok(V::Error(r)) => Err(r.text()),
             Ok(V::None) => Err("error: the target is null".into()),
             Ok(_) => Err("error: the target of a write is an entity or the id of one".into()),
             Err(e) => Err(format!("error: {}", e)),

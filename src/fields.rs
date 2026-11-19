@@ -72,6 +72,7 @@ fn class_rank_in(core: &Core, eid: &str, e: &crate::vm::Ent, names: &[String], g
 
 /// `x is <cls>` (#1143): the class list (`parents`, nearest first), an ancestor up the ISA chain, or the root `Entity`; false for an entity that is not loaded.
 pub(crate) fn entity_is(core: &Core, eid: &str, cls: &str) -> bool {
+    if let Some(k) = crate::expr::reason_class(eid).filter(|_| !core.docs.contains_key(eid)) { return cls == ROOT_CLASS || k == cls; }   // an engine reason (a synthetic entity: no row, one class)
     core.docs.get(eid).map_or(false, |e| cls == ROOT_CLASS || e.in_classes(cls) || has_kind(core, eid, &e.props, cls))
 }
 
@@ -767,12 +768,12 @@ impl Fields {
     }
 
     /// Property `prop` of `eid` now fails with `reason` (or no longer does): the entry in `failed` follows, and the class entry with it.
-    fn set_failure(&mut self, core: &mut Core, eid: &str, prop: &str, reason: Option<&str>, seq: &mut i64, now: f64) {
+    fn set_failure(&mut self, core: &mut Core, eid: &str, prop: &str, reason: Option<&crate::expr::Reason>, seq: &mut i64, now: f64) {
         if prop == "failed" { return; }
         let Some(e) = core.docs.get(eid) else { return };
-        if e.failure(prop) == reason { return; }
+        if e.failure(prop).as_ref() == reason { return; }
         let mut next = e.props.get("failed").and_then(|f| f.as_object()).cloned().unwrap_or_default();
-        match reason { Some(r) => { next.insert(prop.to_string(), J::String(r.to_string())); } None => { next.remove(prop); } }
+        match reason { Some(r) => { next.insert(prop.to_string(), r.to_json()); } None => { next.remove(prop); } }
         self.derive(core, eid, "failed", if next.is_empty() { J::Null } else { J::Object(next) }, seq, now);
         self.sync_class(core, eid, false, seq, now);
     }
@@ -944,18 +945,19 @@ impl Fields {
         self.reads.insert(key, ins);
         match r {
             Ok(v) => {
-                let mut fail: Option<String> = None;
+                let mut fail: Option<crate::expr::Reason> = None;
                 match &nil { Some(n) if v.is_null() => { core.note_why(&key2, Some(n)); core.nulled.remove(&key2); if let crate::vm::Note::Error(r) = n { fail = Some(r.clone()); } } _ => { core.note_why(&key2, None); if v.is_null() { core.nulled.insert(key2.clone()); } else { core.nulled.remove(&key2); } } }   // a null remembers why; a failure goes to the entity's `failed`
                 { let nested = if v.is_array() || v.is_object() { std::mem::take(&mut core.nested_last) } else { vec![] }; core.set_nested(eid, &g.prop, nested); }
-                self.set_failure(core, eid, &g.prop, fail.as_deref(), seq, now);
+                self.set_failure(core, eid, &g.prop, fail.as_ref(), seq, now);
                 Some(v)
             }
             Err(e) => {
                 // an error is a null with the error as its reason (it no longer keeps a stale value); the receipt still says where
                 let reason = format!("error in getter {}.{}: {}; the value is null", g.cls, g.prop, e);
                 self.receipt(core, eid, &format!("getter:{}", g.prop), reason, J::Null, seq, now);
-                core.note_why(&key2, Some(&crate::vm::Note::Error(e.clone())));
-                self.set_failure(core, eid, &g.prop, Some(&e), seq, now);
+                let why = crate::expr::Reason::Text(e.clone());
+                core.note_why(&key2, Some(&crate::vm::Note::Error(why.clone())));
+                self.set_failure(core, eid, &g.prop, Some(&why), seq, now);
                 Some(J::Null)
             }
         }
@@ -973,7 +975,8 @@ impl Fields {
             let gi = self.getters_of(core, &cur.0).into_iter().find(|&i| self.getters[i].prop == cur.1);
             if !null || gi.is_none() || !seen.insert(cur.clone()) { break; }
             let reason = core.reason_of(&cur);
-            let mut node = json!({"eid": cur.0, "prop": cur.1, "reason": reason});
+            let mut node = json!({"eid": cur.0, "prop": cur.1, "reason": reason.as_ref().map(|r| r.text())});
+            if let Some(crate::expr::Reason::Ent(e)) = &reason { node["reason_ent"] = json!(e); }   // an entity reason: its id too (an engine reason names its class)
             if let Some(l) = core.locals.get(&cur) { node["locals"] = J::Object(l.clone()); }
             out.push(node);
             let Some(r) = reason else { break };
