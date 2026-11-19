@@ -473,7 +473,7 @@ fn call_ty_in(f: &str, args: &[Node], tys: &[Ty], env: &Env) -> Ty {
             }
         }
         "len" => { if ar(1, 1) { chk(0, Acc::Len); } Ty::int() }
-        "why" => { ar(1, 1); Ty::text().null_if(true) }
+        "why" => { ar(1, 1); Ty::any() }   // a reason is a text or an entity (a Pending, Absent, Refused or Collected, or a pack's own): Any, so `.cls` and `.text` are not findings
         "lower" | "strip" | "plain" | "unspeak" => { if ar(1, 1) { chk(0, Acc::Text); } Ty::text() }
         "replace" => { if ar(3, 3) { for i in 0..3 { chk(i, Acc::Text); } } Ty::text() }
         "startswith" => { if ar(2, 2) { chk(0, Acc::Text); chk(1, Acc::Text); } Ty::bool() }
