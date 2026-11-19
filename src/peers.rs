@@ -404,7 +404,9 @@ impl Peer {
 
     /// A cell that could not be written (the table is full): remember it, say so once, and write it again once the peer has acknowledged removals and slots are freed.
     fn keep(&mut self, key: &str, value: J, state: CellState, why: &J) {
-        if self.pending.insert(key.to_string(), (value, state)).is_none() { eprintln!("cliffvm: peer {}: cannot publish {key:?} yet: {why}", self.name); }
+        self.pending.insert(key.to_string(), (value, state));
+        // `retry` takes the whole `pending` map and writes each cell again, so "was it already waiting" cannot say whether the cell was reported: `reported` does
+        if self.reported.insert(format!("full\u{1}{key}")) { eprintln!("cliffvm: peer {}: cannot publish {key:?} yet: {why}", self.name); }
     }
 
     fn retry(&mut self) {
