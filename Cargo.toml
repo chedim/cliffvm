@@ -32,11 +32,11 @@ bytemuck = { version = "1.25.2", optional = true }
 pollster = { version = "1.0.1", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 # the graph link's protocol, tokens, shared memory and bridge (#1143): github.com/chedim/graphlink, from crates.io
-graphlink-core = { version = "0.1.3" }
-graphlink-auth = { version = "0.1.3" }
+graphlink-core = { version = "0.1.4" }
+graphlink-auth = { version = "0.1.4" }
 # shared memory for the seat's local peers (Unix; an empty crate elsewhere): control rings and cell tables (docs/graph-link.md, section 18)
-graphlink-bridge = { version = "0.1.3", optional = true }
-graphlink-shm = { version = "0.1.3", optional = true }
+graphlink-bridge = { version = "0.1.4", optional = true }
+graphlink-shm = { version = "0.1.4", optional = true }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }   # a stored f64 (a stamp, a number in a journal line) must parse back to the same bits (#1143)
 # the tokenizer (#1143): UAX #29 sentence and word boundaries, compiled in; no_std-capable, so wasm32 builds
 unicode-segmentation = { version = "=1.13.3", default-features = false }
@@ -67,7 +67,7 @@ alloc-stats = []   # a diagnostic, OFF by default: the counting global allocator
 tls = ["dep:rustls", "dep:webpki-roots"]   # https for the Fetch driver (rustls + webpki roots); off for wasm
 
 [dev-dependencies]
-graphlink-net = { version = "0.1.3" }
+graphlink-net = { version = "0.1.4" }
 rcgen = { version = "0.14.10", default-features = false, features = ["ring", "pem"] }
 # the Rust tests' own executor (a test binary is its own process: it never shares a WAL file with the seat)
 rusqlite = { version = "0.32", features = ["bundled"] }
