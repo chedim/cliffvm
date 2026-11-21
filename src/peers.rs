@@ -191,7 +191,7 @@ impl Peers {
                 }
             }
             if !p.gone && p.ctl.as_ref().map_or(true, |c| c.is_closed()) { p.go(h); }
-            if !p.gone && !p.subs.is_empty() { p.publish(h); }
+            if !p.gone && (!p.subs.is_empty() || p.holds_cells()) { p.publish(h); }
             if !p.gone && p.link.is_open() { p.ask(&self.wanted); p.follow(h); }
         }
     }
@@ -375,10 +375,7 @@ impl Peer {
         for eid in &eids {
             // a node another namespace owns is not the seat's to publish (a replica of the peer's own node would go straight back to it)
             if eid.split_once("::").map_or(false, |(ns, _)| ns != "membrane") { continue; }
-            let wanted: Option<Vec<String>> = {
-                let named: Vec<&Option<Vec<String>>> = self.subs.iter().filter(|(t, _)| match t { Target::Id(e) => e == eid, Target::Prefix(p) => eid.starts_with(p.as_str()) }).map(|(_, p)| p).collect();
-                if named.iter().any(|p| p.is_none()) { None } else { Some(named.iter().filter_map(|p| p.as_ref()).flatten().cloned().collect()) }
-            };
+            let wanted = self.wanted_props(eid);
             match h.entity_props(&eid) {
                 None => self.cell(&format!("{eid}\u{1}"), CellState::Gone, json!(null)),
                 Some(props) => {
@@ -387,19 +384,33 @@ impl Peer {
                 }
             }
         }
-        // an entity that was published and is gone now (retired) is no longer listed under a prefix, so the loop above never visits it: its cells, node and props, become Gone.
-        // Only an entity that is really absent: a prefix lists the loaded entities, and one that is merely unloaded still has its props.
-        let present: std::collections::HashSet<&str> = eids.iter().map(String::as_str).collect();
-        let mut vanished: Vec<String> = self.published.iter()
-            .filter(|(k, (_, _, st))| *st == CellState::Live && k.split_once('\u{1}').map_or(false, |(e, _)| !present.contains(e)
-                && self.subs.iter().any(|(t, _)| match t { Target::Id(x) => x == e, Target::Prefix(p) => e.starts_with(p.as_str()) })))
-            .map(|(k, _)| k.clone()).collect();
-        vanished.retain(|k| k.split_once('\u{1}').map_or(false, |(e, _)| h.entity_props(e).is_none()));
-        vanished.sort();
-        for k in vanished { self.cell(&k, CellState::Gone, json!(null)); }
+        // A cell the peer no longer has a claim to becomes Gone, so its slot can be reclaimed once the peer has seen it: the node was retired (its props too, not only its node cell), the peer
+        // unsubscribed it (no subscription covers it any more), or the peer no longer names the prop. A prefix lists the loaded entities, so one that is merely unloaded still has its props.
+        let mut exists: HashMap<String, bool> = HashMap::new();
+        let mut stale: Vec<String> = vec![];
+        for (k, (_, _, st)) in &self.published {
+            if *st != CellState::Live { continue; }
+            let Some((e, p)) = k.split_once('\u{1}') else { continue };
+            let covered = self.subs.iter().any(|(t, _)| match t { Target::Id(x) => x == e, Target::Prefix(pf) => e.starts_with(pf.as_str()) });
+            let there = *exists.entry(e.to_string()).or_insert_with(|| h.entity_props(e).is_some());
+            let gone = !covered || !there || (!p.is_empty() && self.wanted_props(e).map_or(false, |w| !w.iter().any(|x| x == p)));
+            if gone { stale.push(k.clone()); }
+        }
+        stale.sort();
+        for k in stale { self.cell(&k, CellState::Gone, json!(null)); }
     }
 
-    /// One cell: written when its value or state differs from what is there, at the next revision; a value that does not fit becomes a `Refused` cell that says why.
+    /// The props the peer named for a node, over every subscription that covers it: `None` when one of them names none (all of them).
+    fn wanted_props(&self, eid: &str) -> Option<Vec<String>> {
+        let named: Vec<&Option<Vec<String>>> = self.subs.iter().filter(|(t, _)| match t { Target::Id(e) => e == eid, Target::Prefix(p) => eid.starts_with(p.as_str()) }).map(|(_, p)| p).collect();
+        if named.iter().any(|p| p.is_none()) { None } else { Some(named.iter().filter_map(|p| p.as_ref()).flatten().cloned().collect()) }
+    }
+
+    /// Cells that are still Live or waiting for a slot: they need a turn of `publish` even when the peer has no subscription left.
+    fn holds_cells(&self) -> bool { !self.pending.is_empty() || self.published.values().any(|(_, _, st)| *st == CellState::Live) }
+
+    /// One cell: written when its value or state differs from what is there, at the next revision. A value larger than a slot is the table's business (graphlink-shm stores it in more slots), so what is
+    /// left to refuse is a key that cannot be named (a `Refused` cell that says why); a table with no room for it yet keeps the cell, and it is written once slots are freed.
     fn cell(&mut self, key: &str, state: CellState, value: J) {
         let (rev, same) = match self.published.get(key) { Some((r, v, st)) => (*r, *st == state && *v == value), None => (0.0, false) };
         if same { return; }
@@ -411,8 +422,8 @@ impl Peer {
         };
         match wrote {
             Ok(()) => { self.published.insert(key.to_string(), (rev, value, state)); self.pending.remove(key); }
-            Err(why) if state == CellState::Live => {
-                // the value does not fit its slot (or the key its capacity, or the table is full): the cell says so, instead of keeping an old value
+            Err(why) if state == CellState::Live && !why.starts_with("the table is full") => {
+                // the value cannot be stored at all (the key is over its capacity): the cell says so, instead of keeping an old value. A table that is full is not this: room comes back (below)
                 let reason = json!(why);
                 // what is remembered is what was ASKED (a live value), so an unchanged value that does not fit is not written again every turn
                 if self.cells.mark(key, rev, CellState::Refused, &why).is_ok() { self.published.insert(key.to_string(), (rev, value, state)); self.pending.remove(key); }

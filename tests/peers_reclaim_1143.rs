@@ -184,3 +184,86 @@ fn bad_grants_in_the_fact_stop_the_start_and_name_the_peer() {
         assert!(e.contains("grants") && e.contains("gbad"), "{e}");
     }
 }
+
+// ---- a peer that subscribes by Id and lets go (the way a peer's one-shot nodes work): the slots must come back, whatever the order of retire and unsub
+
+fn sub_id(w: &mut World, eid: &str, names: Option<Vec<&str>>) {
+    let f = w.link.send(vec![Op::Sub { target: Target::Id(eid.into()), props: names.map(|n| n.into_iter().map(String::from).collect()), limit: None }]).unwrap();
+    w.ctl.send(&f).unwrap();
+}
+fn unsub_id(w: &mut World, eid: &str) {
+    let f = w.link.send(vec![Op::Unsub { target: Target::Id(eid.into()) }]).unwrap();
+    w.ctl.send(&f).unwrap();
+}
+fn cell_state(w: &World, eid: &str, prop: &str) -> Option<CellState> { w.sc.get(&key(eid, prop), SPINS, DEPTH).ok().flatten().map(|c| c.state) }
+
+#[test]
+fn nodes_a_peer_subscribes_by_id_retires_and_unsubscribes_pass_through_a_table_too_small_for_them_all() {
+    // 8 slots, two cells per node: six nodes do not fit at once. The peer subscribes the node, the node is retired, the peer unsubscribes at once (it has its answer).
+    let mut w = World::start(8);
+    for i in 0..6 {
+        let id = format!("membrane::Cliff:k{i}");
+        w.h.born(&id, "Cliff", props(i), "t");
+        sub_id(&mut w, &id, None);
+        w.wait(&format!("node {i}: its cells never became Live (the table is full of the nodes before it)"), |w| cell_state(w, &id, "v") == Some(CellState::Live));
+        w.h.write(&id, "", J::Null, "t");   // retire
+        unsub_id(&mut w, &id);
+        w.wait(&format!("node {i}: its cells never became Gone after the retire and the unsub"), |w| cell_state(w, &id, "v") == Some(CellState::Gone) && cell_state(w, &id, "") == Some(CellState::Gone));
+        w.peer_reads();   // the peer has seen the removals
+        w.turns(3);       // the seat reads the acknowledgement and frees the slots
+    }
+}
+
+#[test]
+fn a_node_subscribed_by_id_that_is_retired_has_its_props_gone_too_not_only_the_node_cell() {
+    let mut w = World::start(16);
+    let id = "membrane::Cliff:one";
+    w.h.born(id, "Cliff", props(1), "t");
+    sub_id(&mut w, id, None);
+    w.wait("the cells never became Live", |w| cell_state(w, id, "v") == Some(CellState::Live));
+    w.h.write(id, "", J::Null, "t");   // retire; the peer stays subscribed
+    w.wait("the node cell never became Gone", |w| cell_state(w, id, "") == Some(CellState::Gone));
+    w.turns(5);
+    assert_eq!(cell_state(&w, id, "v"), Some(CellState::Gone), "the prop cell of a retired node stays Live: its slot can never be reclaimed");
+}
+
+#[test]
+fn unsubscribing_a_node_that_still_exists_makes_its_cells_gone_and_subscribing_again_brings_them_back() {
+    let mut w = World::start(16);
+    let id = "membrane::Cliff:two";
+    w.h.born(id, "Cliff", props(7), "t");
+    sub_id(&mut w, id, None);
+    w.wait("the cells never became Live", |w| cell_state(w, id, "v") == Some(CellState::Live));
+    unsub_id(&mut w, id);
+    w.wait("an unsubscribed node's cells never became Gone (the peer no longer wants them, and their slots are held)", |w| cell_state(w, id, "v") == Some(CellState::Gone) && cell_state(w, id, "") == Some(CellState::Gone));
+    sub_id(&mut w, id, None);
+    w.wait("a new subscription never brought the cells back", |w| cell_state(w, id, "v") == Some(CellState::Live));
+    assert_eq!(w.sc.get(&key(id, "v"), SPINS, DEPTH).unwrap().unwrap().value, json!(7));
+}
+
+#[test]
+fn a_prop_the_peer_no_longer_names_becomes_gone() {
+    let mut w = World::start(16);
+    let id = "membrane::Cliff:three";
+    let mut m = props(1); m.insert("w".into(), json!(2));
+    w.h.born(id, "Cliff", m, "t");
+    sub_id(&mut w, id, Some(vec!["v"]));
+    w.wait("the named prop never became Live", |w| cell_state(w, id, "v") == Some(CellState::Live));
+    assert_eq!(cell_state(&w, id, "w"), None, "a prop the peer did not name is not published");
+    sub_id(&mut w, id, Some(vec!["w"]));   // the same target again replaces the props it named
+    w.wait("the newly named prop never became Live", |w| cell_state(w, id, "w") == Some(CellState::Live));
+    w.turns(5);
+    assert_eq!(cell_state(&w, id, "v"), Some(CellState::Gone), "a prop no longer named keeps its slot");
+}
+
+#[test]
+fn a_node_still_covered_by_a_prefix_keeps_its_cells_when_an_id_subscription_ends() {
+    let mut w = World::start(16);   // the world's own subscription is the prefix `membrane::Req:`
+    let id = "membrane::Req:covered";
+    w.h.born(id, "Req", props(5), "t");
+    sub_id(&mut w, id, None);
+    w.wait("the cells never became Live", |w| cell_state(w, id, "v") == Some(CellState::Live));
+    unsub_id(&mut w, id);
+    w.turns(10);
+    assert_eq!(cell_state(&w, id, "v"), Some(CellState::Live), "the prefix still covers it");
+}
