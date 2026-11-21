@@ -353,7 +353,7 @@ pub struct Fields {
     /// LAYERS: (eid, prop) -> the pack whose arm supplied a layered getter's value
     layer_of: std::collections::HashMap<(String, String), String>,
     /// the target (eid, prop) -> the (pack, setter) that wrote it FIRST this round: a stacked setter of another pack skips its write to it
-    claimed: std::collections::HashMap<(String, String), (String, String)>,
+    claimed: std::collections::HashMap<(String, String), (String, String, String, String)>,   // (target, prop) -> (pack, setter, the trigger's entity, the trigger's property): who wrote it first, and for which write
     /// skipped writes (eid, prop, pack, setter) -> the pack that overrode it, as `why_layer` tells
     skipped: std::collections::BTreeMap<(String, String, String, String), String>,
     /// class -> its storage mode, from the active owner packs' VIRTUAL / RESIDENT header lines (`compose`)
@@ -1668,10 +1668,20 @@ impl Fields {
             if target != LLM_CALL && !pack.is_empty() {
                 let t = if is_me(target) { Some(eid.to_string()) } else { core.eval_ref(target, &vars, &extra) };
                 if let Some(t) = t {
+                    // only SIBLINGS compete: setters fired by the SAME write (the stacked layers of one trigger). A write made by a setter fired by another write (the door's `entity_write` is a setter of
+                    // the `Request`; Memo's `fix` is fired by what it wrote) is an INPUT to the class: it is not a rival, and the class's own setters answer it normally
+                    let me = (eid.to_string(), wprop.to_string());
                     match self.claimed.get(&(t.clone(), prop.clone())).cloned() {
-                        Some((by, _)) if by != pack => { self.skipped.insert((t, prop.clone(), pack.to_string(), name.to_string()), by); continue; }
-                        Some(_) => {}
-                        None => claim = Some((t, prop.clone())),
+                        Some((by, _, te, tp)) if by != pack && (te.as_str(), tp.as_str()) == (me.0.as_str(), me.1.as_str()) => {
+                            // a setter rewriting the very property that fired it is not skipped in silence: the entity says who won
+                            if t == eid && prop == wprop {
+                                self.receipt(core, eid, name, format!("refused: `{name}` (pack {pack}) rewrote `{prop}`, the property that fired it, and was skipped: pack {by} wrote {t}.{prop} first, and between stacked layers the first write wins (see docs/c1f-layers.md); a value derived from another is a getter, which composes across layers"), J::Null, seq, now);
+                            }
+                            self.skipped.insert((t, prop.clone(), pack.to_string(), name.to_string()), by);
+                            continue;
+                        }
+                        Some((by, _, te, tp)) if by == pack && (te.as_str(), tp.as_str()) == (me.0.as_str(), me.1.as_str()) => {}
+                        _ => claim = Some((t, prop.clone())),   // nobody yet, or a claim made for another write: this write is the first of ITS trigger's siblings
                     }
                 }
             }
@@ -1700,7 +1710,7 @@ impl Fields {
                 Ok(v) => match crate::expr::to_json(&v) { Ok(j) => j, Err(_) => continue },
                 Err(_) => continue,
             };
-            if let Some(k) = claim { self.claimed.insert(k, (pack.to_string(), name.to_string())); }   // a write that was made: it is the first
+            if let Some(k) = claim { self.claimed.insert(k, (pack.to_string(), name.to_string(), eid.to_string(), wprop.to_string())); }   // a write that was made: it is the first of its trigger's siblings
             if target == LLM_CALL {
                 if self.calls_refused { self.receipt(core, eid, name, format!("refused: `{LLM_CALL}` does nothing on this seat (it has no model-call effect): the call was not made; ask the model through a chat message instead"), J::Null, seq, now); continue; }
                 self.calls.push(v);
