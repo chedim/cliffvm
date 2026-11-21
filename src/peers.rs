@@ -409,7 +409,8 @@ impl Peer {
     /// Cells that are still Live or waiting for a slot: they need a turn of `publish` even when the peer has no subscription left.
     fn holds_cells(&self) -> bool { !self.pending.is_empty() || self.published.values().any(|(_, _, st)| *st == CellState::Live) }
 
-    /// One cell: written when its value or state differs from what is there, at the next revision; a value that does not fit becomes a `Refused` cell that says why.
+    /// One cell: written when its value or state differs from what is there, at the next revision. A value larger than a slot is the table's business (graphlink-shm stores it in more slots), so what is
+    /// left to refuse is a key that cannot be named (a `Refused` cell that says why); a table with no room for it yet keeps the cell, and it is written once slots are freed.
     fn cell(&mut self, key: &str, state: CellState, value: J) {
         let (rev, same) = match self.published.get(key) { Some((r, v, st)) => (*r, *st == state && *v == value), None => (0.0, false) };
         if same { return; }
@@ -421,8 +422,8 @@ impl Peer {
         };
         match wrote {
             Ok(()) => { self.published.insert(key.to_string(), (rev, value, state)); self.pending.remove(key); }
-            Err(why) if state == CellState::Live => {
-                // the value does not fit its slot (or the key its capacity, or the table is full): the cell says so, instead of keeping an old value
+            Err(why) if state == CellState::Live && !why.starts_with("the table is full") => {
+                // the value cannot be stored at all (the key is over its capacity): the cell says so, instead of keeping an old value. A table that is full is not this: room comes back (below)
                 let reason = json!(why);
                 // what is remembered is what was ASKED (a live value), so an unchanged value that does not fit is not written again every turn
                 if self.cells.mark(key, rev, CellState::Refused, &why).is_ok() { self.published.insert(key.to_string(), (rev, value, state)); self.pending.remove(key); }
