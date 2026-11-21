@@ -1,6 +1,8 @@
-//! #994 row 9: the WHEN/WHERE/WRITE translation layer. goalgraph's triggers (data, packs/goalgraph.json) translate to the
+//! #994 row 9: the WHEN/WHERE/WRITE translation layer. goalgraph's triggers (data, tests/fixtures/goalgraph.json) translate to the
 //! fields row 2 wrote by hand; the whole-field checksum gate is parity_994.rs (its goalgraph run now uses the translation).
-use cliffvm::translate::{goalgraph_counts, goalgraph_setters, specs_of, translate, Field, GOALGRAPH};
+use cliffvm::translate::{goalgraph_counts, goalgraph_setters, specs_of, translate, Field};
+
+const GOALGRAPH: &str = include_str!("fixtures/goalgraph.json");
 use serde_json::json;
 
 fn w(t: &str, p: &str, v: &str) -> (String, String, String) { (t.into(), p.into(), v.into()) }
@@ -36,7 +38,7 @@ fn conditions_are_translated_not_copied() {
 
 #[test]
 fn the_five_blocker_triggers_are_the_counting_getter() {
-    let mut c = goalgraph_counts();
+    let mut c = goalgraph_counts(GOALGRAPH);
     c.sort();
     let t = |a: &str, b: &str, c: &str| (a.to_string(), b.to_string(), c.to_string());
     assert_eq!(c, vec![t("Decision", "closed", "Task"), t("Decision", "closed", "Wait"), t("Task", "done", "Task"), t("Task", "done", "Wait"), t("Wait", "done", "Task")]);

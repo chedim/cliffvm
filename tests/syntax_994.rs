@@ -3,10 +3,11 @@
 use cliffvm::fields::{OnSet, LLM_CALL};
 use cliffvm::syntax::{parse, print};
 use cliffvm::translate::{goalgraph_setters, translated_goalgraph_setters, GOALGRAPH_CH};
+const GOALGRAPH: &str = include_str!("fixtures/goalgraph.json");
 
 #[test]
 fn the_text_pack_equals_the_migrated_triggers() {
-    assert_eq!(goalgraph_setters(), translated_goalgraph_setters());
+    assert_eq!(goalgraph_setters(), translated_goalgraph_setters(GOALGRAPH));
     assert_eq!(goalgraph_setters().len(), 9);
 }
 

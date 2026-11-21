@@ -4,6 +4,9 @@
 use cliffvm::vm::Core;
 use cliffvm::{packs, recall};
 
+/// the data form of the recall dials (the VM ships no packs: this is the fixture the test holds equal to `recall::defaults()`)
+fn shipped() -> Vec<&'static str> { vec![include_str!("fixtures/recall-policy.json")] }
+
 /// canonical JSON text: object keys sorted at every depth (a parsed pack and a json! literal order keys differently)
 fn canon(v: &serde_json::Value) -> String {
     match v {
@@ -34,7 +37,7 @@ fn legacy(c: &mut Core) {
 fn pack_load_matches_the_hand_coded_load() {
     let (mut a, mut b) = (Core::new(), Core::new());
     legacy(&mut a);
-    let n: usize = packs::shipped().iter().map(|t| packs::load_pack(&mut b, t).unwrap()).sum();
+    let n: usize = shipped().iter().map(|t| packs::load_pack(&mut b, t).unwrap()).sum();
     assert_eq!(n, 1);
     assert_eq!(checksum(&a), checksum(&b));
     println!("checksum {:016x}", checksum(&b));
@@ -51,9 +54,9 @@ fn seed_functions_now_read_the_packs() {
 #[test]
 fn loading_twice_is_idempotent() {
     let mut c = Core::new();
-    for t in packs::shipped() { packs::load_pack(&mut c, t).unwrap(); }
+    for t in shipped() { packs::load_pack(&mut c, t).unwrap(); }
     let once = checksum(&c);
-    for t in packs::shipped() { packs::load_pack(&mut c, t).unwrap(); }
+    for t in shipped() { packs::load_pack(&mut c, t).unwrap(); }
     assert_eq!(once, checksum(&c));
 }
 

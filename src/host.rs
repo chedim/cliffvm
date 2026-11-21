@@ -327,7 +327,7 @@ impl Host {
         let db = Arc::new(Mutex::new(db));
         let mut core = Core::new();
         for (k, cls, data) in stored_vectors { if let Ok(w) = crate::vecstore::bytes_to_words(&data) { let _ = core.vectors.put(&cls, &k, &w); } }
-        crate::recall::load_seed(&mut core);   // the recall policy's dials (`recall:dials`, native/packs/recall-policy.json): the recall part of the banner reads them
+        crate::recall::load_seed(&mut core);   // the recall policy's dials (`recall:dials`, `recall::defaults()`): the recall part of the banner reads them
         core.set_ns(SEAT_NS);   // the graph link: ids under `membrane::` and bare ids are this VM's, any other `ns::` is foreign (docs/graph-link.md, 15b)
         core.queue_writes = false;   // a field host runs no trigger engine: the queue would only hold every write's values (vm.rs `queue_writes`)
         if o.store.is_some() { core.loader = Some(stored_loader(db.clone())); }   // a lazy entity a setter writes loads from the store
