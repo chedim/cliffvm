@@ -1,14 +1,13 @@
 //! #994 row 9: the WHEN/WHERE/WRITE TRANSLATION LAYER, native VM only. A trigger spec (the shape goalgraph, ch_learn and
 //! the seed packs write today) is translated into a FIELD: an on-setter (WHEN the prop is written and a condition holds,
 //! write another prop) or a counting getter. The layer exists only for the switch: fields.rs no longer carries a
-//! hand-written setter table -- `goalgraph_fields` reads goalgraph's triggers as data (packs/goalgraph.json) and
+//! hand-written setter table -- `goalgraph_fields` reads goalgraph's triggers as data (tests/fixtures/goalgraph.json) and
 //! translates them. A spec the layer cannot express as a field is an Err (it stays a trigger until its row moves it).
 use serde_json::Value as J;
 
 use crate::fields::{OnSet, LLM_CALL};
 use crate::vm::Spec;
 
-pub const GOALGRAPH: &str = include_str!("../packs/goalgraph.json");
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Field {
@@ -132,11 +131,11 @@ pub fn goalgraph_getters() -> Vec<crate::fields::Getter> {
     crate::syntax::parse_full(GOALGRAPH_CH).expect("packs/goalgraph.c1f parses").getters
 }
 
-/// The same setters translated from the old WHEN/WHERE/WRITE triggers (packs/goalgraph.json): the migration path,
+/// The same setters translated from the old WHEN/WHERE/WRITE triggers (tests/fixtures/goalgraph.json): the migration path,
 /// held equal to the text pack by tests/syntax_994.rs.
-pub fn translated_goalgraph_setters() -> Vec<OnSet> {
+pub fn translated_goalgraph_setters(pack: &str) -> Vec<OnSet> {
     let mut out = vec![];
-    for (name, sp) in specs_of(GOALGRAPH) {
+    for (name, sp) in specs_of(pack) {
         let Ok(Field::Set(mut st)) = translate(&name, &sp) else { continue };
         if name == "wait-armed" { st.writes.push(("this".into(), "armed_since".into(), "clock".into())); }
         let twin = if name == "ready" || name == "wait-armed" { let mut t = st.clone(); t.name = format!("{}-on-status", name); t.prop = "status".into(); Some(t) } else { None };
@@ -147,6 +146,6 @@ pub fn translated_goalgraph_setters() -> Vec<OnSet> {
 }
 
 /// goalgraph's counting getters, as (blocker, finished, target)
-pub fn goalgraph_counts() -> Vec<(String, String, String)> {
-    specs_of(GOALGRAPH).iter().filter_map(|(n, sp)| match translate(n, sp) { Ok(Field::Count { blocker, finished, target }) => Some((blocker, finished, target)), _ => None }).collect()
+pub fn goalgraph_counts(pack: &str) -> Vec<(String, String, String)> {
+    specs_of(pack).iter().filter_map(|(n, sp)| match translate(n, sp) { Ok(Field::Count { blocker, finished, target }) => Some((blocker, finished, target)), _ => None }).collect()
 }

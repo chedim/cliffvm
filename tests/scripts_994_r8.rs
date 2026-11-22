@@ -1,4 +1,4 @@
-//! #994 row 8: entity scripts as field data. The script text shipped in native/packs/scripts.json equals the Python
+//! #994 row 8: entity scripts as field data. The script text in tests/fixtures/scripts.json equals the Python
 //! constants byte-for-byte (fixture generated from night.py / autonode.py / chat_io.py), lands on the owning entities as
 //! tick/watch/getter properties, and the whole-field checksum of the load is pinned.
 use cliffvm::packs;
@@ -6,6 +6,8 @@ use cliffvm::vm::Core;
 use serde_json::Value;
 
 const FIX: &str = include_str!("fixtures/py_scripts_r8.json");
+/// the recall dials and the entity scripts, as the data files in tests/fixtures (the VM ships no packs)
+fn shipped_all() -> Vec<&'static str> { vec![include_str!("fixtures/recall-policy.json"), include_str!("fixtures/scripts.json")] }
 
 fn canon(v: &Value) -> String {
     match v {
@@ -27,7 +29,7 @@ fn checksum(c: &Core) -> u64 {
 }
 fn loaded() -> Core {
     let mut c = Core::new();
-    for t in packs::shipped_all() { packs::load_pack(&mut c, t).unwrap(); }
+    for t in shipped_all() { packs::load_pack(&mut c, t).unwrap(); }
     c
 }
 
@@ -55,7 +57,7 @@ fn sensors_and_seeds_land_on_their_entities() {
 fn loading_twice_is_idempotent_and_malformed_declares_nothing() {
     let mut c = loaded();
     let once = checksum(&c);
-    for t in packs::shipped_all() { packs::load_pack(&mut c, t).unwrap(); }
+    for t in shipped_all() { packs::load_pack(&mut c, t).unwrap(); }
     assert_eq!(once, checksum(&c));
     let mut d = Core::new();
     assert!(packs::load_pack(&mut d, r#"{"entities":[{"eid":"a","cls":"T"},{"cls":"T"}]}"#).is_err());
