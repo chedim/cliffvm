@@ -346,6 +346,7 @@ pub fn infer_expr(n: &Node, env: &Env) -> Ty {
         }
         Node::Call(f, args) => call_ty(f, args, env),
         Node::Ctor(c, args) => { for (_, a) in args { infer_expr(a, env); } Ty::entity(c) }
+        Node::Dyn(e) => { infer_expr(e, env); Ty::any() }   // an id that is data: its class is not known
         Node::Ent(parts) => {
             // the class is the first segment after a namespace; a key that may be null (or is not an int or text) makes the id null, or an Error
             let (mut nullable, mut err) = (false, false);
@@ -732,6 +733,7 @@ fn walk_reads(n: &Node, env: &Env, out: &mut Vec<Read>) {
         }
         Node::Ctor(_, args) => for (_, x) in args { walk_reads(x, env, out) },
         Node::Ent(parts) => for p in parts { if let EntPart::Key(k) = p { walk_reads(k, env, out) } },
+        Node::Dyn(e) => walk_reads(e, env, out),
     }
 }
 

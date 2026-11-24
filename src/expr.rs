@@ -223,6 +223,8 @@ pub enum Node {
     /// an unquoted entity literal: `Goal:board`, `membrane::Chat:message[id]:response` (its text, with each `[key]` evaluated and
     /// appended as `:<key>`)
     Ent(Vec<EntPart>),
+    /// `${expr}`: the entity whose id is the value of `expr` (a text); `[name]` and `.name` after it read a property (#1143)
+    Dyn(Box<Node>),
     /// `Class(name: value, ...)`: a constructor (named arguments only). It means something only as the right of `<entity> = ...`,
     /// where the entity on the left is its identity (fields.rs); anywhere else it is a reasoned error.
     Ctor(String, Vec<(String, Node)>),
@@ -240,7 +242,7 @@ impl Node {
             Node::Const(_) | Node::Name(_) => {}
             Node::List(v) | Node::And(v) | Node::Or(v) | Node::Call(_, v) => out.extend(v.drain(..)),
             Node::Dict(v) => out.extend(v.drain(..).map(|(_, n)| n)),
-            Node::Attr(a, _) | Node::Neg(a) | Node::Not(a) | Node::Is(a, _, _) => b(a),
+            Node::Dyn(a) | Node::Attr(a, _) | Node::Neg(a) | Node::Not(a) | Node::Is(a, _, _) => b(a),
             Node::Index(a, c) | Node::Bin(_, a, c) | Node::Let(_, a, c) => { b(a); b(c); }
             Node::Compare(a, ops) => { b(a); out.extend(ops.drain(..).map(|(_, n)| n)); }
             Node::Comp(e, _, i, c) => { b(e); b(i); if let Some(c) = c { b(c); } }
@@ -355,6 +357,7 @@ fn lex(s: &str, block: bool) -> Result<Vec<Tok>, Err> {
             out.push(Tok::Seg(text));
             continue;
         }
+        if ch == '$' && c.get(i + 1) == Some(&'{') { out.push(Tok::P("${")); i += 2; continue; }
         let two: String = c[i..(i + 2).min(c.len())].iter().collect();
         let p: Option<&'static str> = match two.as_str() {
             "==" => Some("=="), "!=" => Some("!="), "<=" => Some("<="), ">=" => Some(">="), "**" => Some("**"), "//" => Some("//"),
@@ -588,6 +591,11 @@ impl P {
                 let mut s = s;
                 while let Tok::Str(more) = self.peek().clone() { self.next(); s.push_str(&more); }
                 Ok(Node::Const(V::Str(s)))
+            }
+            Tok::P("${") => {
+                let e = self.expr()?;
+                self.expect("}")?;
+                Ok(Node::Dyn(Box::new(e)))
             }
             Tok::Ent(text) => {
                 let mut parts = vec![EntPart::Lit(text)];
@@ -1435,6 +1443,12 @@ fn ev_node(n: &Node, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> 
         Node::Comp(elt, var, iter, cond) => ev_comp(elt, var, iter, cond, env, w, m),
         Node::Call(f, args) => ev_call(f, args, env, w, m),
         Node::Ent(parts) => ev_ent(parts, env, w, m),
+        Node::Dyn(e) => match ev(e, env, w, m)? {
+            V::Str(id) if !id.is_empty() => Ok(V::Ent(id)),
+            v @ V::Ent(_) => Ok(v),
+            v @ (V::None | V::Nil(_) | V::Error(_)) => Ok(v),
+            v => Err(format!("${{...}} is an entity id (a text), got a {}", kind_of(&v))),
+        },
         Node::Ctor(c, _) => Err(format!("a constructor creates the entity on the left of a write: write `<entity> = {}(name: value)`", c)),
     }
 }
