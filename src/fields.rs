@@ -359,6 +359,8 @@ pub struct Fields {
     /// class -> its storage mode, from the active owner packs' VIRTUAL / RESIDENT header lines (`compose`)
     storage: crate::vm::StorageMap,
     members: crate::vm::MembersMap,
+    /// stored entities loaded in the middle of a round whose getters have no value yet (a row holds none): the first write that reaches one computes them before its setters run (`compute_dirty_of`)
+    loaded: std::collections::HashSet<String>,
     /// class -> dtype of the MAPPED classes (`MAPPED <Class> f16`: their `v` lives in the native vector store, vecstore.rs); shared with the core
     mapped: crate::vm::MappedMap,
     /// set while the setters of a write on a VIRTUAL entity run: what they write to a stored entity is marked `virt` in `out`, so the host journals it as an
@@ -413,7 +415,7 @@ impl Fields {
         let mut f = Fields { link: Default::default(), setters: on_setters(), calls: vec![], writes: 0, recall: false, adapters: false, method_calls: vec![], learn: None, accepted: Default::default(), visited: Default::default(), refusals: vec![], out: vec![], retired: vec![], inbound_by_host: false, calls_refused: false, refused_by: Default::default(), receipt_n: 0,
             getters: vec![], glevel: vec![], deps: Default::default(), reads: Default::default(), dirty: Default::default(),
             known: Default::default(), primed: false, fresh: vec![], late: vec![], flips: Default::default(), class_deferred: Default::default(), recon: Default::default(), in_run: false, packs: Default::default(),
-            owner: Default::default(), imports: Default::default(), pack_errors: Default::default(), load_order: vec![], granted: Default::default(), layer_of: Default::default(), claimed: Default::default(), skipped: Default::default(), storage: Default::default(), members: Default::default(), mapped: Default::default(), trigger_virtual: false };
+            owner: Default::default(), imports: Default::default(), pack_errors: Default::default(), load_order: vec![], granted: Default::default(), layer_of: Default::default(), claimed: Default::default(), skipped: Default::default(), storage: Default::default(), members: Default::default(), loaded: Default::default(), mapped: Default::default(), trigger_virtual: false };
         let gg = crate::syntax::parse_full(crate::translate::GOALGRAPH_CH).expect("packs/goalgraph.c1f parses");
         f.packs.insert("goalgraph".into(), gg);
         f.load_order.push("goalgraph".into());
@@ -1520,6 +1522,7 @@ impl Fields {
             let (cls, keys): (String, Vec<String>) = (d.cls.clone(), d.props.keys().cloned().collect());
             self.mark_key(&(crate::vm::CLASS_READ.to_string(), cls));
             self.known.insert(e.clone());
+            self.loaded.insert(e.clone());
             if d.props.contains_key("failed") { self.recon.insert(e.clone()); }
             for gi in self.getters_of(core, &e) { self.dirty.insert((self.glevel[gi], e.clone(), gi)); }
             for p in keys { self.mark(&e, &p); }
@@ -1542,6 +1545,7 @@ impl Fields {
 
     /// Computes the getters of `eid` that are dirty, lowest level first, as the settle loop would later, and says what they got (what they write is heard as any write).
     fn compute_dirty_of(&mut self, core: &mut Core, host: &dyn Host, work: &mut VecDeque<Write>, eid: &str, now: f64, seq: &mut i64) {
+        if !self.loaded.remove(eid) { return; }   // only an entity a write has just loaded from the store: any other write keeps the order setters were written for (a setter reads the getters as they were before the write)
         let mine: Vec<(usize, String, usize)> = self.dirty.iter().filter(|(_, e, _)| e == eid).cloned().collect();
         for key in mine {
             self.dirty.remove(&key);
