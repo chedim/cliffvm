@@ -304,6 +304,26 @@ fn migrate(db: &Connection) -> Result<(), String> {
         for (e, ts) in last { db.execute("UPDATE c_field SET updated = ?1 WHERE k = ?2", params![ts, e]).map_err(dbe)?; }
         db.execute_batch("COMMIT").map_err(dbe)?;
     }
+    // GETTER VALUES ARE EPHEMERAL (#1143, operator 2026-11-24): a store written before that kept them in the rows, stamped as a getter's write. Remove them, once (`user_version`).
+    let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(dbe)?;
+    if version < 1 {
+        let keys: Vec<String> = db.prepare(&format!("SELECT k FROM {ROWS} WHERE body LIKE '%trigger:field:getter:%' OR body LIKE '%trigger:field:rebuild%'")).map_err(dbe)?
+            .query_map([], |r| r.get(0)).map_err(dbe)?.filter_map(|r| r.ok()).collect();
+        db.execute_batch("BEGIN").map_err(dbe)?;
+        for k in keys {
+            let body: String = db.query_row(&format!("SELECT body FROM {ROWS} WHERE k = ?"), params![k], |r| r.get(0)).map_err(dbe)?;
+            let Ok(mut row) = serde_json::from_str::<J>(&body) else { continue };
+            let gone: Vec<String> = row["writers"].as_object().map(|w| w.iter().filter(|(_, v)| v.as_str().map_or(false, is_getter_write)).map(|(p, _)| p.clone()).collect()).unwrap_or_default();
+            if gone.is_empty() { continue; }
+            for p in &gone {
+                if let Some(o) = row["props"].as_object_mut() { o.remove(p); }
+                if let Some(o) = row["writers"].as_object_mut() { o.remove(p); }
+            }
+            db.execute(&format!("UPDATE {ROWS} SET body = ?1 WHERE k = ?2"), params![row.to_string(), k]).map_err(dbe)?;
+        }
+        db.execute_batch("COMMIT").map_err(dbe)?;
+        db.execute_batch("PRAGMA user_version = 1").map_err(dbe)?;
+    }
     Ok(())
 }
 
