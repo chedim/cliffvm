@@ -1400,7 +1400,7 @@ fn ev_node(n: &Node, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> 
         Node::Ent(parts) => ev_ent(parts, env, w, m),
         Node::Dyn(e) => match ev(e, env, w, m)? {
             V::Str(id) if !id.is_empty() => Ok(V::Ent(id)),
-            v @ V::Ent(_) => Ok(v),
+            v @ (V::Ent(_) | V::Dict(_)) => Ok(v),   // a dict stays a dict (`${d}['k']` is its key, as the removed `prop(d, 'k')` read it)
             v @ (V::None | V::Nil(_) | V::Error(_)) => Ok(v),
             v => Err(format!("${{...}} is an entity id (a text), got a {}", kind_of(&v))),
         },

@@ -47,3 +47,9 @@ fn prop_and_props_are_not_builtins_any_more() {
     assert!(run("prop('Command:x', 'status')").unwrap_err().contains("built-ins"), "`${{id}}[name]` reads it now");
     assert!(run("props(['Command:x'], 'status')").unwrap_err().contains("built-ins"));
 }
+
+#[test]
+fn a_dict_in_braces_stays_the_dict_so_the_rewrite_of_a_dict_read_is_one_to_one() {
+    assert_eq!(ok("${{'a': 1}}['a']"), json!(1), "prop(d, 'a') on a dict read its key");
+    assert_eq!(ok("[${r}['a'] for r in [{'a': 1}, {'a': 2}]]"), json!([1, 2]));
+}
