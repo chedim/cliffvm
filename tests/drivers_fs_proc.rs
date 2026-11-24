@@ -25,7 +25,7 @@ fn dir() -> std::path::PathBuf {
 const PACK: &str = "PACK std 1
 File.text getter: read(this.path) if this.path else None
 File.info getter: stat(this.path) if this.path else None
-Dir.names getter: [prop(e, 'name') for e in (listdir(this.path) or [])] if this.path else []
+Dir.names getter: [e['name'] for e in (listdir(this.path) or [])] if this.path else []
 Command.kind getter: 'command'
 ";
 

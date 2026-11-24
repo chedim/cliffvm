@@ -223,6 +223,8 @@ pub enum Node {
     /// an unquoted entity literal: `Goal:board`, `membrane::Chat:message[id]:response` (its text, with each `[key]` evaluated and
     /// appended as `:<key>`)
     Ent(Vec<EntPart>),
+    /// `${expr}`: the entity whose id is the value of `expr` (a text); `[name]` and `.name` after it read a property (#1143)
+    Dyn(Box<Node>),
     /// `Class(name: value, ...)`: a constructor (named arguments only). It means something only as the right of `<entity> = ...`,
     /// where the entity on the left is its identity (fields.rs); anywhere else it is a reasoned error.
     Ctor(String, Vec<(String, Node)>),
@@ -240,7 +242,7 @@ impl Node {
             Node::Const(_) | Node::Name(_) => {}
             Node::List(v) | Node::And(v) | Node::Or(v) | Node::Call(_, v) => out.extend(v.drain(..)),
             Node::Dict(v) => out.extend(v.drain(..).map(|(_, n)| n)),
-            Node::Attr(a, _) | Node::Neg(a) | Node::Not(a) | Node::Is(a, _, _) => b(a),
+            Node::Dyn(a) | Node::Attr(a, _) | Node::Neg(a) | Node::Not(a) | Node::Is(a, _, _) => b(a),
             Node::Index(a, c) | Node::Bin(_, a, c) | Node::Let(_, a, c) => { b(a); b(c); }
             Node::Compare(a, ops) => { b(a); out.extend(ops.drain(..).map(|(_, n)| n)); }
             Node::Comp(e, _, i, c) => { b(e); b(i); if let Some(c) = c { b(c); } }
@@ -355,6 +357,7 @@ fn lex(s: &str, block: bool) -> Result<Vec<Tok>, Err> {
             out.push(Tok::Seg(text));
             continue;
         }
+        if ch == '$' && c.get(i + 1) == Some(&'{') { out.push(Tok::P("${")); i += 2; continue; }
         let two: String = c[i..(i + 2).min(c.len())].iter().collect();
         let p: Option<&'static str> = match two.as_str() {
             "==" => Some("=="), "!=" => Some("!="), "<=" => Some("<="), ">=" => Some(">="), "**" => Some("**"), "//" => Some("//"),
@@ -393,8 +396,8 @@ pub const RESERVED: &[&str] = &[
     "Int", "Float", "Num", "Text", "Bool", "List", "Dict", "Error", "None", "True", "False", "this", "x", "clock",
     "dot", "norm", "distance", "unit", "abs", "min", "max", "len", "lower", "strip", "replace", "startswith", "lines", "words", "spans",
     "join", "head", "tail", "sort_by", "unspeak", "before", "after", "pluck", "distinct", "group_by", "concat", "fit", "clip", "ago",
-    "plain", "num", "epoch", "localtime", "json", "str", "referencing", "prop", "why",
-    "instances", "jsonl", "listdir", "read", "sql", "stat", "recall", "rerank", "pronoun", "near", "vsum", "fold", "log", "vmean", "props", "keys",
+    "plain", "num", "epoch", "localtime", "json", "str", "referencing", "why",
+    "instances", "jsonl", "listdir", "read", "sql", "stat", "recall", "rerank", "pronoun", "near", "vsum", "fold", "log", "vmean", "keys", "meta",
     "it", "that", "they", "them", "these", "those", "he", "him", "she", "her",
     "and", "or", "not", "in", "is", "if", "else", "lambda", "for", "await", "yield",
 ];
@@ -589,6 +592,11 @@ impl P {
                 while let Tok::Str(more) = self.peek().clone() { self.next(); s.push_str(&more); }
                 Ok(Node::Const(V::Str(s)))
             }
+            Tok::P("${") => {
+                let e = self.expr()?;
+                self.expect("}")?;
+                Ok(Node::Dyn(Box::new(e)))
+            }
             Tok::Ent(text) => {
                 let mut parts = vec![EntPart::Lit(text)];
                 loop {
@@ -751,6 +759,8 @@ pub trait World {
     fn host(&self, _f: &str, _a: &[V]) -> Option<Result<V, Err>> { None }
     /// Is the entity of this class: its `parents` (nearest first), an ancestor's, or the root `Entity`? (`x is Trip`)
     fn is_class(&self, _eid: &str, _cls: &str) -> bool { false }
+    /// `meta(eid)`: the metadata of an entity as a dict of names (class, parents, properties, getters, setters), no values. A null when it is not there or not loaded yet.
+    fn meta(&self, _eid: &str) -> V { V::None }
 }
 
 pub fn nullish(v: &V) -> bool { matches!(v, V::None | V::Nil(_)) }
@@ -1008,7 +1018,7 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
             if acc.iter().any(|x| !x.is_finite()) { return Err("vsum: not a finite number (an f32 overflowed)".into()); }
             Ok(floats(acc.into_iter().map(|x| x as f64).collect()))
         }
-        // vmean(ids) (#1143, operator 2026-11-15): the mean of the unit vectors `v` of a list of entities, as `vsum([unit(prop(e, 'v')) for e in ids]) / n` computes it
+        // vmean(ids) (#1143, operator 2026-11-15): the mean of the unit vectors `v` of a list of entities, as `vsum([unit(${e}['v']) for e in ids]) / n` computes it
         // (the unit in f64, the sum in f32 in list order, the division in f64), read one vector at a time; an id with no vector and a null id are skipped
         "vmean" => {
             argn(1)?;
@@ -1035,41 +1045,6 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
             if acc.iter().any(|x| !x.is_finite()) { return Err("vmean: not a finite number (an f32 overflowed)".into()); }
             Ok(floats(acc.into_iter().map(|s| s as f64 / n as f64).collect()))
         }
-        // props(ids, 'name') / props(ids, at, 'name') (#1143, operator 2026-11-15): one property of every entity of a list, as `[prop(e, 'name') for e in ids]`;
-        // with `at`, the at[i]-th element of the i-th value, as `[prop(e, 'name')[k] ...]` (a list by index, a dict by key; a miss is a null)
-        "props" => {
-            if a.len() < 2 || a.len() > 3 { return Err("props(ids, 'name') or props(ids, at, 'name'): 2 or 3 arguments".into()); }
-            let V::List(ids) = &a[0] else { return Err(format!("props(ids, 'name'): ids is a list of entities, got a {}", kind_of(&a[0]))) };
-            let V::Str(name) = &a[a.len() - 1] else { return Err("props(ids, 'name'): the name is a text (the last argument)".into()) };
-            if name.starts_with('_') { return Err(format!("no attribute {:?}", name)); }
-            let at: Option<&Vec<V>> = match a.len() {
-                3 => match &a[1] {
-                    V::List(l) if l.len() == ids.len() => Some(l),
-                    V::List(l) => return Err(format!("props(ids, at, 'name'): {} ids and {} indexes (one index per id)", ids.len(), l.len())),
-                    v => return Err(format!("props(ids, at, 'name'): at is a list of indexes, got a {}", kind_of(v))),
-                },
-                _ => None,
-            };
-            let mut out = Vec::with_capacity(ids.len());
-            for (i, x) in ids.iter().enumerate() {
-                let v = match x {
-                    V::Ent(e) | V::Str(e) => w.attr(e, name),
-                    V::Dict(d) => d.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone()).unwrap_or(V::None),
-                    V::None | V::Nil(_) => x.clone(),
-                    v => return Err(format!("props: item {i} is a {}, not an entity", kind_of(v))),
-                };
-                out.push(match at {
-                    None => v,
-                    Some(at) => match (&v, &at[i]) {
-                        (_, V::List(_) | V::Dict(_) | V::Float(_) | V::Bool(_)) => return Err(format!("props: index {i} is a {}, not an index (a whole number or a key)", kind_of(&at[i]))),
-                        (V::Error(_), _) => v,
-                        (_, k) if nullish(k) => V::None,
-                        _ => index_value(v, at[i].clone(), w).map_err(|e| format!("props: item {i}: {e}"))?,
-                    },
-                });
-            }
-            Ok(V::List(out))
-        }
         // fold(init, [step for x in xs if keep]) is evaluated by `ev_fold` (its step is not evaluated before the call); reaching here means a wrong shape
         "fold" => Err(FOLD_USE.into()),
         // log(x) (#1143, operator 2026-11-15): the natural log, the f64 log rounded to f32 (two math libraries that differ in an f64's last bits agree); x a positive number
@@ -1095,6 +1070,7 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
         "lines" => { argn(1)?; Ok(V::List(text_of(&a[0])?.lines().map(|l| V::Str(l.to_string())).collect())) }
         // the keys of a dict, in the order it holds them; a read still pending is an empty list (as `pluck`)
         "keys" => { argn(1)?; match &a[0] { V::Dict(d) => Ok(V::List(d.iter().map(|(k, _)| V::Str(k.clone())).collect())), V::None | V::Nil(_) => Ok(V::List(vec![])), _ => Err("keys(d): d is a dict".into()) } }
+        "meta" => { argn(1)?; match &a[0] { V::Str(id) => Ok(w.meta(id)), V::None | V::Nil(_) => Ok(V::None), _ => Err("meta(eid): eid is an entity id".into()) } }
         "words" => { argn(1)?; Ok(V::List(text_of(&a[0])?.split_whitespace().map(|w| V::Str(w.to_string())).collect())) }
         "spans" => {      // the tokenizer (#1143): [{start, end, text}] of a layer, offsets in chars (docs/semtext-and-legs.md)
             argn(2)?;
@@ -1310,16 +1286,6 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
             let e = match &a[0] { V::Ent(e) | V::Str(e) => e.clone(), _ => return Ok(V::List(vec![])) };
             Ok(V::List(w.refs(&e, &py_str(&a[1])).into_iter().map(V::Ent).collect()))
         }
-        "prop" => {
-            argn(2)?;
-            match &a[0] {
-                V::Ent(e) => { let name = py_str(&a[1]); if name.starts_with('_') { return Err(format!("no attribute {:?}", name)); } Ok(w.attr(e, &name)) }
-                V::Dict(d) => { let name = py_str(&a[1]); Ok(d.iter().find(|(k, _)| *k == name).map(|(_, v)| v.clone()).unwrap_or(V::None)) }
-                // an entity's id (a reference stored as a string): its field, read like `x.name`
-                V::Str(id) => { let name = py_str(&a[1]); if name.starts_with('_') { return Err(format!("no attribute {:?}", name)); } Ok(w.attr(id, &name)) }
-                _ => Ok(V::None),
-            }
-        }
         _ => match w.host(f, &a) { Some(r) => r, None => Err("only the built-ins may be called".into()) },
     }
 }
@@ -1432,6 +1398,25 @@ fn ev_node(n: &Node, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> 
         Node::Comp(elt, var, iter, cond) => ev_comp(elt, var, iter, cond, env, w, m),
         Node::Call(f, args) => ev_call(f, args, env, w, m),
         Node::Ent(parts) => ev_ent(parts, env, w, m),
+        Node::Dyn(e) => match ev(e, env, w, m)? {
+            V::Str(id) if !id.is_empty() => Ok(V::Ent(id)),
+            v @ (V::Ent(_) | V::Dict(_)) => Ok(v),   // a dict stays a dict (`${d}['k']` is its key, as the removed `prop(d, 'k')` read it)
+            // a list of ids: the list of those entities, so `[name]` after it reads that property of every one (`index_value`: one step however long the list)
+            V::List(items) => {
+                let mut out = Vec::with_capacity(items.len());
+                for (i, x) in items.into_iter().enumerate() {
+                    out.push(match x {
+                        V::Str(id) if !id.is_empty() => V::Ent(id),
+                        v @ (V::Ent(_) | V::Dict(_) | V::None | V::Nil(_)) => v,
+                        e @ V::Error(_) => return Ok(e),
+                        v => return Err(format!("${{...}}: item {i} is a {}, not an entity id", kind_of(&v))),
+                    });
+                }
+                Ok(V::List(out))
+            }
+            v @ (V::None | V::Nil(_) | V::Error(_)) => Ok(v),
+            _ => Ok(V::None),   // a number, a bool or a list names no entity: a null, as the removed `prop(x, 'k')` read it
+        },
         Node::Ctor(c, _) => Err(format!("a constructor creates the entity on the left of a write: write `<entity> = {}(name: value)`", c)),
     }
 }
@@ -1456,6 +1441,8 @@ fn ev_seq(n: &Node, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> {
 fn ev_attr(b: &Node, a: &String, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> {
     match ev(b, env, w, m)? {
         V::Ent(e) => { if a.starts_with('_') { return Err(format!("no attribute {:?}", a)); } Ok(w.attr(&e, a)) }
+        // the entities of a list (`${ids}.name`): that property of each, as `${ids}[name]`
+        l @ V::List(_) => index_value(l, V::Str(a.clone()), w),
         V::Nil(r) => Ok(V::Nil(r)),
         e @ V::Error(_) => Ok(e),
         V::None => Ok(V::absent(format!(".{} of an absent value", a))),
@@ -1544,6 +1531,29 @@ fn index_value(base: V, idx: V, w: &dyn World) -> Result<V, Err> {
                     Ok(if at >= 0 && at < n { l[at as usize].clone() } else { V::None })
                 }
                 (V::Dict(d), V::Str(k)) => Ok(d.iter().find(|(x, _)| *x == k).map(|(_, v)| v.clone()).unwrap_or(V::None)),
+                // a list of values indexed by a list (`${ids}.name[at]`): the i-th value takes at[i], a list by its index and a dict by its key; a miss, a null value or a null index is a null
+                (V::List(l), V::List(at)) => {
+                    if l.len() != at.len() { return Err(format!("{} values and {} indexes (one index per value)", l.len(), at.len())); }
+                    let mut out = Vec::with_capacity(l.len());
+                    for (i, (v, k)) in l.into_iter().zip(at.into_iter()).enumerate() {
+                        out.push(match (&v, &k) {
+                            (_, V::List(_) | V::Dict(_) | V::Float(_) | V::Bool(_)) => return Err(format!("index {i} is a {}, not an index (a whole number or a key)", kind_of(&k))),
+                            (V::Error(_), _) => v,
+                            (V::None | V::Nil(_), _) | (_, V::None | V::Nil(_)) => V::None,
+                            _ => match index_value(v, k, w) { Ok(x) => x, Err(e) => return Err(format!("item {i}: {e}")) },
+                        });
+                    }
+                    Ok(V::List(out))
+                }
+                // a list of entities (what `${ids}` makes) indexed by a name: that property of each, in one step
+                (V::List(l), V::Str(k)) if l.iter().all(|x| matches!(x, V::Ent(_) | V::Dict(_) | V::None | V::Nil(_))) => {
+                    if k.starts_with('_') { return Err(format!("no attribute {:?}", k)); }
+                    Ok(V::List(l.iter().map(|x| match x {
+                        V::Ent(e) => w.attr(e, &k),
+                        V::Dict(d) => d.iter().find(|(x, _)| *x == k).map(|(_, v)| v.clone()).unwrap_or(V::None),
+                        v => v.clone(),
+                    }).collect()))
+                }
                 (V::Ent(e), V::Str(k)) => { if k.starts_with('_') { return Err(format!("no attribute {:?}", k)); } Ok(w.attr(&e, &k)) }
                 (b, i) => Err(format!("cannot index a {} by a {}", kind_of(&b), kind_of(&i))),
             }

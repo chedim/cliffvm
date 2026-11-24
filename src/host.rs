@@ -304,6 +304,26 @@ fn migrate(db: &Connection) -> Result<(), String> {
         for (e, ts) in last { db.execute("UPDATE c_field SET updated = ?1 WHERE k = ?2", params![ts, e]).map_err(dbe)?; }
         db.execute_batch("COMMIT").map_err(dbe)?;
     }
+    // GETTER VALUES ARE EPHEMERAL (#1143, operator 2026-11-24): a store written before that kept them in the rows, stamped as a getter's write. Remove them, once (`user_version`).
+    let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(dbe)?;
+    if version < 1 {
+        let keys: Vec<String> = db.prepare(&format!("SELECT k FROM {ROWS} WHERE body LIKE '%trigger:field:getter:%' OR body LIKE '%trigger:field:rebuild%'")).map_err(dbe)?
+            .query_map([], |r| r.get(0)).map_err(dbe)?.filter_map(|r| r.ok()).collect();
+        db.execute_batch("BEGIN").map_err(dbe)?;
+        for k in keys {
+            let body: String = db.query_row(&format!("SELECT body FROM {ROWS} WHERE k = ?"), params![k], |r| r.get(0)).map_err(dbe)?;
+            let Ok(mut row) = serde_json::from_str::<J>(&body) else { continue };
+            let gone: Vec<String> = row["writers"].as_object().map(|w| w.iter().filter(|(_, v)| v.as_str().map_or(false, is_getter_write)).map(|(p, _)| p.clone()).collect()).unwrap_or_default();
+            if gone.is_empty() { continue; }
+            for p in &gone {
+                if let Some(o) = row["props"].as_object_mut() { o.remove(p); }
+                if let Some(o) = row["writers"].as_object_mut() { o.remove(p); }
+            }
+            db.execute(&format!("UPDATE {ROWS} SET body = ?1 WHERE k = ?2"), params![row.to_string(), k]).map_err(dbe)?;
+        }
+        db.execute_batch("COMMIT").map_err(dbe)?;
+        db.execute_batch("PRAGMA user_version = 1").map_err(dbe)?;
+    }
     Ok(())
 }
 
@@ -343,7 +363,7 @@ impl Host {
         }
         let mut fields = Fields::goalgraph();
         core.mapped = fields.mapped_handle();
-        core.storage = fields.storage_handle();   // the core reads the classes' modes too (`.pinned`)
+        core.members = fields.members_handle(); core.storage = fields.storage_handle();   // the core reads the classes' modes too (`.pinned`)
         fields.inbound_by_host = true;
         fields.recall = true;   // the guard of `recall:dials`: a write that fails its guard is put back (fields.rs `recall_on`)
         fields.calls_refused = true;
@@ -1115,6 +1135,9 @@ impl Host {
         let known = self.eng().0.docs.get(eid).map(|e| e.cls.clone());
         let ts = self.stamp_ts();
         if self.storage_of(known.as_deref().or(cls).unwrap_or("")) == crate::fields::Storage::Virtual { self.eng().0.updated.insert(eid.to_string(), ts); return; }   // RAM only: no row, but it has its `updated`
+        // A GETTER's value is ephemeral (operator 2026-11-24): the engine holds it in memory, the row never does (a restore computes it again, `restore_props`). A row an older seat
+        // stored with one has it dropped here, the next time the row is written.
+        if is_getter_write(stamp) { self.drop_stored_getter(eid, prop); self.eng().0.updated.insert(eid.to_string(), ts); return; }
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         self.load(&db, eid);
         let mut g = self.pending.lock().unwrap_or_else(|e| e.into_inner());
@@ -1135,6 +1158,16 @@ impl Host {
         slot.updated = ts;
         drop(g); drop(db);   // the engine's lock is never taken under the store's (the loader takes the store's under the engine's)
         self.eng().0.updated.insert(eid.to_string(), ts);
+    }
+
+    /// Takes `prop` out of the stored row of `eid` when an older seat stored it as a getter's value (its writer is a getter's); a row that has no such property is left alone.
+    fn drop_stored_getter(&self, eid: &str, prop: &str) {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        self.load(&db, eid);
+        let mut g = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(slot) = g.as_mut().and_then(|m| m.get_mut(eid)) else { return };
+        let Some((_, p, w)) = slot.row.as_mut() else { return };
+        if w.get(prop).and_then(|x| x.as_str()).map_or(false, is_getter_write) { p.remove(prop); w.remove(prop); slot.dirty = true; }
     }
 
     /// Every stored row: eid -> {cls, props, writers}.

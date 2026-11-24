@@ -1,5 +1,5 @@
 //! Two builtins that let a getter's work over a long list cost one step, not steps per item (#1143, operator 2026-11-15: the field's recall must scale):
-//! `props(ids, 'name')` reads one property of every entity of a list (`props(ids, at, 'name')` takes the `at[i]`-th element of each value: a list index or a dict key),
+//! (`props` is gone, #1143 operator 2026-11-24: `[${e}['name'] for e in ids]` reads one property of every entity.)
 //! `vmean(ids)` is the mean of the unit vectors (`v`) of a list of entities, read straight from the store; and `group_by(rows, key, sums)` adds, to each group,
 //! the sum of each named column (no per-group comprehension to total it).
 use cliffvm::expr::{self, V};
@@ -42,52 +42,6 @@ fn within(src: &str, env: Vec<(&str, J)>, b: u64) -> Result<V, String> {
     r
 }
 
-// ---- props ---------------------------------------------------------------------------------------------------------
-
-#[test]
-fn props_reads_one_property_of_every_entity() {
-    assert_eq!(ok("props(['A:1', 'A:2'], 'n')"), json!([10, 20]));
-    assert_eq!(ok("props([A:1, A:2], 'n')"), json!([10, 20]), "entities or their ids");
-    assert_eq!(ok("props([], 'n')"), json!([]));
-}
-
-#[test]
-fn props_keeps_a_null_where_an_entity_has_no_such_property_or_the_item_is_null() {
-    let v = run("props(['A:1', 'A:9', None], 'n')").unwrap();
-    let V::List(l) = v else { panic!("{v:?}") };
-    assert!(matches!(&l[0], V::Int(10)));
-    assert!(matches!(&l[1], V::Nil(r) if r.text().contains("absent")), "the read's own reason: {:?}", l[1]);
-    assert!(matches!(&l[2], V::None | V::Nil(_)));
-    assert_eq!(ok("props([{'n': 5}], 'n')"), json!([5]), "a dict item reads its key, as prop does");
-}
-
-#[test]
-fn props_with_at_takes_one_element_of_each_value() {
-    assert_eq!(ok("props(['A:1', 'A:2', 'A:1'], [2, 0, 7], 'ids')"), json!(["x2", "y0", null]), "a list by its index; past the end is a null");
-    assert_eq!(ok("props(['A:1'], ['k'], 'd')"), json!(["one"]), "a dict by its key");
-    assert_eq!(ok("props(['A:9', None], [0, 0], 'ids')"), json!([null, null]), "a null value stays null");
-    assert_eq!(ok("props(['A:1'], [None], 'ids')"), json!([null]), "a null index is a null");
-}
-
-#[test]
-fn props_says_why_on_a_wrong_shape() {
-    assert!(err("props('A:1', 'n')").contains("list"));
-    assert!(err("props(['A:1'], 3)").contains("name"));
-    assert!(err("props(['A:1', 'A:2'], [0], 'ids')").contains("one index per"));
-    assert!(err("props([3], 'n')").contains("item 0"));
-    assert!(err("props(['A:1'], '_hidden')").contains("_hidden"));
-    assert!(err("props(['A:1'])").contains("props"));
-    assert!(err("props(['A:1'], [[1]], 'ids')").contains("index"));
-}
-
-#[test]
-fn props_is_one_step_however_many_ids() {
-    let ids: Vec<J> = (0..3000).map(|i| json!(format!("A:{}", i % 3 + 1))).collect();
-    let at: Vec<J> = (0..3000).map(|_| json!(0)).collect();
-    let r = within("props(ids, at, 'ids')", vec![("ids", J::Array(ids)), ("at", J::Array(at))], 5);
-    assert!(matches!(&r, Ok(V::List(l)) if l.len() == 3000), "{:?}", r.map(|_| ()));
-}
-
 // ---- vmean ---------------------------------------------------------------------------------------------------------
 
 #[test]
@@ -101,7 +55,7 @@ fn vmean_is_the_mean_of_the_unit_vectors() {
 #[test]
 fn vmean_gives_the_same_bits_as_the_c1f_it_replaces() {
     let a = ok("vmean(['A:1', 'A:2', 'A:5', 'A:1'])");
-    let b = ok("vsum([unit(prop(e, 'v')) for e in ['A:1', 'A:2', 'A:5', 'A:1']]) / len(['A:1', 'A:2', 'A:5', 'A:1'])");
+    let b = ok("vsum([unit(${e}['v']) for e in ['A:1', 'A:2', 'A:5', 'A:1']]) / len(['A:1', 'A:2', 'A:5', 'A:1'])");
     assert_eq!(a, b);
 }
 
@@ -164,10 +118,8 @@ fn group_by_with_sums_is_one_step_however_many_rows() {
 #[test]
 fn the_names_are_reserved_and_typed() {
     use cliffvm::infer::infer_src;
-    assert!(expr::RESERVED.contains(&"props") && expr::RESERVED.contains(&"vmean"));
+    assert!(expr::RESERVED.contains(&"vmean") && !expr::RESERVED.contains(&"props") && !expr::RESERVED.contains(&"prop"), "prop and props are gone");
     assert_eq!(infer_src("vmean(ids)", &[("ids", "List(Text)")]).unwrap().0, "List(Float)?");
-    assert_eq!(infer_src("props(ids, 'n')", &[("ids", "List(Text)")]).unwrap().0, "List(Any)");
-    assert!(!infer_src("props(ids)", &[("ids", "List(Text)")]).unwrap().1.is_empty(), "one argument is reported");
     assert!(!infer_src("vmean(ids, ids)", &[("ids", "List(Text)")]).unwrap().1.is_empty(), "two arguments are reported");
     assert!(infer_src("group_by(rows, 'k', ['p'])", &[("rows", "List(Dict)")]).unwrap().1.is_empty(), "sums are a third argument");
 }

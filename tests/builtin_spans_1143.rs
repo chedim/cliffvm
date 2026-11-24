@@ -11,7 +11,7 @@ fn ev(src: &str, env: J) -> J {
 fn spans_returns_start_end_text_in_chars() {
     let e = json!({"t": "Привет, мир. Ok."});
     assert_eq!(ev("spans(t, 'sentence')", e.clone()), json!([{"start": 0, "end": 12, "text": "Привет, мир."}, {"start": 13, "end": 16, "text": "Ok."}]));
-    assert_eq!(ev("[prop(s, 'text') for s in spans(t, 'word')]", e.clone()), json!(["Привет", "мир", "Ok"]));
+    assert_eq!(ev("[s['text'] for s in spans(t, 'word')]", e.clone()), json!(["Привет", "мир", "Ok"]));
     assert_eq!(ev("len(spans('', 'word'))", e.clone()), json!(0));
     // cutting by the offsets with the existing head/tail: no slice builtin is needed
     assert_eq!(ev("head(tail(t, len(t) - 8), 3)", e), json!("мир"));
@@ -39,7 +39,7 @@ fn read(pack: &str) -> J {
 fn a_getter_in_a_loaded_pack_reads_the_spans() {
     let s = read("PACK t 1\nMsg.s getter: spans(this.text, 'sentence')\n");
     assert_eq!(s, json!([{"start": 0, "end": 17, "text": "Open ~/a.txt now."}, {"start": 18, "end": 34, "text": "Then my_fn runs."}]));
-    let s = read("PACK t 1\nMsg.s getter: [prop(x, 'text') for x in spans(this.text, 'path')]\n");
+    let s = read("PACK t 1\nMsg.s getter: [x['text'] for x in spans(this.text, 'path')]\n");
     assert_eq!(s, json!(["~/a.txt"]));
 }
 
@@ -60,7 +60,7 @@ mod cliff {
     fn a_clifflet_getter_reads_the_spans() {
         let mut o = Options::new(None); o.effects = false;
         let h = Host::open(o).unwrap();
-        h.load_pack("cliffx", "PACK cliffx 1\nCliffx.val getter:\n  [prop(x, 'text') for x in spans('go to src/a.rs. Then stop.', 'sentence')]\n").unwrap();
+        h.load_pack("cliffx", "PACK cliffx 1\nCliffx.val getter:\n  [x['text'] for x in spans('go to src/a.rs. Then stop.', 'sentence')]\n").unwrap();
         h.rebuild();
         h.born("Cliffx:x", "Cliffx", Default::default(), "person");
         h.pump();

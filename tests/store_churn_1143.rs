@@ -53,8 +53,9 @@ fn the_writes_of_one_round_are_one_transaction() {
     h.rebuild();
     assert_eq!(h.get("Box:3", "label"), json!("box 3"));
     let stored: J = serde_json::from_str(&watch.query_row("SELECT body FROM c_field WHERE k = 'Box:3'", [], |r| r.get::<_, String>(0)).unwrap()).unwrap();
-    assert_eq!(stored["props"]["double"], json!(6), "the derived value is stored (the door's entity_read reads the store)");
-    assert_eq!(h.store_commits() - before, 1, "8 derived writes on 4 rows: ONE commit (one fsync), not one per prop");
+    assert!(stored["props"].get("double").is_none(), "a getter's value is not stored (operator 2026-11-24): the door reads it from the engine");
+    assert_eq!(h.get("Box:3", "double"), json!(6), "it is computed");
+    assert_eq!(h.store_commits(), before, "and a round of getters writes nothing: no commit at all");
 }
 
 #[test]

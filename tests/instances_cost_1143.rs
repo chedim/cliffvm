@@ -19,7 +19,7 @@ fn host(pack: &str) -> Host {
 /// `Request`, made every `instances('Boot')` of the request walk the field again, 10 ms each at 27,000 entities: a 404 took 45 ms, 12 s on a seat with 400,000 entities and a poll queue.)
 #[test]
 fn an_arrival_of_another_class_does_not_walk_the_field_again() {
-    let h = host("PACK sem 1\nProbe.n getter: len(instances('Boot')) + len(prop('Probe:a', 'tick') or [])\n");
+    let h = host("PACK sem 1\nProbe.n getter: len(instances('Boot')) + len(${'Probe:a'}['tick'] or [])\n");
     h.born("Probe:a", "Probe", Default::default(), "person");
     for i in 0..2_000 {
         h.born(&format!("Chat:message:{i}:turn:tool:{i}"), "Chat", json!({"parents": ["cls:chat", "cls:chatmessage"], "x": i}).as_object().unwrap().clone(), "person");
@@ -65,7 +65,7 @@ fn the_class_test_keeps_its_answers() {
 /// The per-class answers are kept between asks: a `parents` write makes the next ask see the change (the getter also reads the entity's `parents`, so it is asked again).
 #[test]
 fn a_kept_class_answer_follows_a_parents_write() {
-    let h = host("PACK sem 1\nProbe.k getter: len(instances('Kind')) * 10 + len(instances('Other')) + len(prop('Other:x', 'parents') or [])\n");
+    let h = host("PACK sem 1\nProbe.k getter: len(instances('Kind')) * 10 + len(instances('Other')) + len(${'Other:x'}['parents'] or [])\n");
     h.born("Other:x", "Other", json!({"parents": ["cls:other"]}).as_object().unwrap().clone(), "person");
     h.born("Probe:a", "Probe", Default::default(), "person");
     h.pump();

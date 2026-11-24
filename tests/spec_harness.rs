@@ -110,10 +110,10 @@ fn a_dict_key_that_is_a_getters_name_is_not_a_read_of_it() {
 }
 
 #[test]
-fn prop_of_a_name_is_still_a_read_of_it() {
-    // `prop(e, 'name')` names a field by a string: that IS a dependency, and must order a above name.
+fn a_read_of_an_entity_by_a_name_is_a_dependency_on_it() {
+    // `${id}['name']` names a field by a string: that IS a dependency, and must order a above name.
     let d = tmp("propread");
-    let p = pack_file(&d, "propread", "PACK propread 1\nT.c getter: prop(this.row, 'b')\nT.b getter: this.x + 1\nT.row getter: {'b': this.b}\n");
+    let p = pack_file(&d, "propread", "PACK propread 1\nT.c getter: ${this.row}['b']\nT.b getter: this.x + 1\nT.row getter: this.eid\n");
     let s = json!({"name": "propread", "packs": [p], "given": [{"eid": "T:1", "class": "T", "props": {"x": 5}}], "writes": [],
         "expect": [{"eid": "T:1", "prop": "b", "equals": 6}, {"eid": "T:1", "prop": "c", "equals": 6}]});
     assert_eq!(spec::run(&s), Vec::<String>::new());

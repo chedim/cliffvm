@@ -105,7 +105,7 @@ fn builtins_have_signatures() {
     assert_eq!(ty("abs(n)", &[("n", "Int")]), "Int");
     assert_eq!(ty("instances('Boot')", &[]), "List(Entity(Boot))");
     assert_eq!(ty("stat(p)", &[("p", "Text")]), "Any");
-    assert_eq!(ty("prop(d, 'k')", &[("d", "Dict")]), "Any");
+    assert_eq!(ty("${d}['k']", &[("d", "Dict")]), "Any");
     assert_eq!(ty("pluck(rows, 'k')", &[("rows", "List(Dict)")]), "List(Any)");
 }
 
