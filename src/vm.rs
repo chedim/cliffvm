@@ -385,8 +385,8 @@ impl<'a> expr::World for View<'a> {
     /// A stored entity that is not loaded is asked for, as `attr` does.
     fn meta(&self, eid: &str) -> V {
         let Some(e) = self.core.docs.get(eid) else {
-            if self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); }
-            return V::None;
+            if self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); return V::None; }   // stored, not loaded: asked for
+            return V::Nil(Reason::Ent(format!("Absent:{eid} does not exist")));   // not there: a null that says so, as `attr` does
         };
         let classes = e.class_names();
         let (mut getters, mut setters): (Vec<String>, Vec<(String, String)>) = (vec![], vec![]);
