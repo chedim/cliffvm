@@ -153,9 +153,11 @@ impl Store {
             }
             if let Some(prev) = sh.asked.insert(asker.to_string(), k.clone()) {
                 if prev != k && !sh.asked.values().any(|v| *v == prev) {
-                    // superseded and wanted by no one: stop it, and forget an answer that came in for it
+                    // superseded and wanted by no one: stop it, and forget it whole (its entry, Pending or Done, and its run): asked again before its thread
+                    // has ended, it starts afresh, and the interrupted run's error is never taken as that ask's answer
                     if let (Some(t), Some(x)) = (sh.running.get(&prev), sh.exec.as_ref()) { stop = Some((x.clone(), *t)); }
-                    if matches!(sh.results.get(&prev), Some(State::Done(_))) { sh.results.remove(&prev); }
+                    sh.running.remove(&prev);
+                    sh.results.remove(&prev);
                 }
             }
             sh.results.insert(k.clone(), State::Pending);
@@ -177,6 +179,11 @@ impl Store {
         std::thread::Builder::new().name("membrane-sql".into()).spawn(move || {
             let r = exec.run(token, &sql, &args);
             let mut g = sh.0.lock().unwrap_or_else(|e| e.into_inner());
+            if g.running.get(&k2) != Some(&token) {      // not this run's entry any more (superseded, maybe asked afresh since): its answer is dropped
+                g.done += 1;
+                sh.1.notify_all();
+                return;
+            }
             g.running.remove(&k2);
             if g.asked.values().any(|v| *v == k2) {      // still wanted: its getter recomputes with it
                 g.results.insert(k2.clone(), State::Done(r));
