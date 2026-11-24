@@ -21,7 +21,7 @@ fn truth(src: &str) -> bool { match run(src, &env()).unwrap_or_else(|x| panic!("
 #[test]
 fn arithmetic_negation_index_attribute_and_calls_give_that_error() {
     for src in ["e + 1", "1 + e", "e * 2", "e - e", "e / 2", "-e", "'x' + e", "e + 'x'", "e[0]", "[1][e]", "e['k']", "e.name", "abs(e)", "len(e)", "str(e)", "max(1, e)",
-                "join(e, ',')", "sort_by(e, 'k')", "Int(e)", "lower(e)", "prop(e, 'x')", "[1, 2] + e"] {
+                "join(e, ',')", "sort_by(e, 'k')", "Int(e)", "lower(e)", "${e}['x']", "[1, 2] + e"] {
         gives_error(src, "boom");
     }
 }

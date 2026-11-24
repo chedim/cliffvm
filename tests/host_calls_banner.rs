@@ -24,7 +24,7 @@ impl Host for H {
     }
 }
 
-const PACK: &str = "PACK banner 1\nBanner.rows getter: recall(this.ask, this.k)\nBanner.lines getter: [prop(r, 'fact') for r in (this.rows or [])]\n";
+const PACK: &str = "PACK banner 1\nBanner.rows getter: recall(this.ask, this.k)\nBanner.lines getter: [r['fact'] for r in (this.rows or [])]\n";
 
 fn world(fail: bool) -> (Core, Fields, H) {
     let mut f = Fields::goalgraph();

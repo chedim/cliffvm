@@ -120,7 +120,7 @@ fn overhead_report() {
 #[test]
 fn a_rebuild_does_not_evaluate_a_getter_whose_inputs_did_not_change() {
     stats::set_on(true);
-    let pack = "PACK sr 1\nStatsR.dbl getter: this.w * 2\nStatsR.d getter: (prop(this.up, 'd') + 1) if this.up != None else 0\n";
+    let pack = "PACK sr 1\nStatsR.dbl getter: this.w * 2\nStatsR.d getter: (${this.up}['d'] + 1) if this.up != None else 0\n";
     let mut f = Fields::goalgraph();
     f.set_pack("sr", pack).unwrap();
     let mut c = Core::new();

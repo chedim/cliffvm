@@ -2,7 +2,7 @@
 //! A field is a getter (a value that is a pure function of the field) or an on-setter (WHEN the
 //! prop is written and a condition holds, write other props). Counting is a computed getter
 //! (`open_blockers`), not decrement-on-event: idempotent and replay-safe. The getter's value is
-//! materialised onto the entity (written when it changes), so the whole-field checksum sees it.
+//! held on the entity in memory (never stored: operator 2026-11-24, a row holds what was written and a restore computes the getters again).
 //! OFF by default: nothing in lib.rs or the seat wires this in; the parity gate builds it.
 use std::collections::VecDeque;
 
@@ -126,7 +126,7 @@ const CLOCK: &str = "\u{0}clock";
 /// keeps the level it reached (its closing edge reads the previous value, rule 8).
 ///
 /// Which getters a read lands on is class-aware (the same expression types `infer.rs` uses): `this.n` reads `n` of THIS getter's
-/// class; `x.n` / `g.n` / `prop(x, 'n')` read `n` of x's class when it is known (`this`, a loop variable over `instances('X')`
+/// class; `x.n` / `g.n` / `${x}['n']` read `n` of x's class when it is known (`this`, a loop variable over `instances('X')`
 /// or over a getter of known element type, a constructor, an entity literal). Where the class is unknown the read is
 /// conservative (every getter of that name), but such an edge is dropped when it would close a cycle that the known edges do
 /// not: a name collision between unrelated classes can never order a getter after what depends on it. Strings in dict
@@ -217,7 +217,7 @@ pub fn levels_by_name(gs: &[Getter]) -> Vec<usize> {
 }
 
 /// The expression with its data strings blanked: a dict key or a list element that happens to be a getter's name is not a read of
-/// it. A string that is the LAST argument of a call (`prop(row, 'name')`) names a field: it stays.
+/// it. A string that is the LAST argument of a call (`${row}['name']`) names a field: it stays.
 fn code_only(expr: &str) -> String {
     let c: Vec<char> = expr.chars().collect();
     let mut out = String::with_capacity(expr.len());
@@ -230,7 +230,7 @@ fn code_only(expr: &str) -> String {
             let end = j.min(c.len() - 1);
             let prev = out.chars().rev().find(|x| !x.is_whitespace());
             let next = c[end + 1..].iter().find(|x| !x.is_whitespace());
-            if prev == Some(',') && next == Some(&')') { out.extend(&c[i..=end]); }     // prop(x, 'name'): a read by name
+            if prev == Some(',') && next == Some(&')') { out.extend(&c[i..=end]); }     // ${x}['name']: a read by name
             else { out.push(' '); for _ in i..=end { out.push(' '); } }
             i = end + 1;
         } else { out.push(c[i]); i += 1; }
@@ -358,6 +358,11 @@ pub struct Fields {
     skipped: std::collections::BTreeMap<(String, String, String, String), String>,
     /// class -> its storage mode, from the active owner packs' VIRTUAL / RESIDENT header lines (`compose`)
     storage: crate::vm::StorageMap,
+    members: crate::vm::MembersMap,
+    /// stored entities loaded in the middle of a round whose getters have no value yet (a row holds none): the first write that reaches one computes them before its setters run (`compute_dirty_of`)
+    loaded: std::collections::HashSet<String>,
+    /// stored entities loaded this run: the FIRST value a getter gets after a load is not a change (the row used to hold it), so no setter hears it (`emit_getter`); cleared when the run is quiet
+    quiet_load: std::collections::HashSet<String>,
     /// class -> dtype of the MAPPED classes (`MAPPED <Class> f16`: their `v` lives in the native vector store, vecstore.rs); shared with the core
     mapped: crate::vm::MappedMap,
     /// set while the setters of a write on a VIRTUAL entity run: what they write to a stored entity is marked `virt` in `out`, so the host journals it as an
@@ -406,12 +411,13 @@ impl Fields {
     pub fn storage_of(&self, cls: &str) -> Storage { self.storage.read().unwrap_or_else(|e| e.into_inner()).get(cls).copied().unwrap_or(Storage::Lazy) }
     /// The class table the engine's core reads too (`Core::storage`): one shared map, written by `compose`.
     pub fn storage_handle(&self) -> crate::vm::StorageMap { self.storage.clone() }
+    pub fn members_handle(&self) -> crate::vm::MembersMap { self.members.clone() }
     pub fn mapped_handle(&self) -> crate::vm::MappedMap { self.mapped.clone() }
     pub fn goalgraph() -> Self {
         let mut f = Fields { link: Default::default(), setters: on_setters(), calls: vec![], writes: 0, recall: false, adapters: false, method_calls: vec![], learn: None, accepted: Default::default(), visited: Default::default(), refusals: vec![], out: vec![], retired: vec![], inbound_by_host: false, calls_refused: false, refused_by: Default::default(), receipt_n: 0,
             getters: vec![], glevel: vec![], deps: Default::default(), reads: Default::default(), dirty: Default::default(),
             known: Default::default(), primed: false, fresh: vec![], late: vec![], flips: Default::default(), class_deferred: Default::default(), recon: Default::default(), in_run: false, packs: Default::default(),
-            owner: Default::default(), imports: Default::default(), pack_errors: Default::default(), load_order: vec![], granted: Default::default(), layer_of: Default::default(), claimed: Default::default(), skipped: Default::default(), storage: Default::default(), mapped: Default::default(), trigger_virtual: false };
+            owner: Default::default(), imports: Default::default(), pack_errors: Default::default(), load_order: vec![], granted: Default::default(), layer_of: Default::default(), claimed: Default::default(), skipped: Default::default(), storage: Default::default(), members: Default::default(), loaded: Default::default(), quiet_load: Default::default(), mapped: Default::default(), trigger_virtual: false };
         let gg = crate::syntax::parse_full(crate::translate::GOALGRAPH_CH).expect("packs/goalgraph.c1f parses");
         f.packs.insert("goalgraph".into(), gg);
         f.load_order.push("goalgraph".into());
@@ -604,6 +610,12 @@ impl Fields {
         *self.storage.write().unwrap_or_else(|e| e.into_inner()) = modes;
         *self.mapped.write().unwrap_or_else(|e| e.into_inner()) = active.iter().flat_map(|n| self.packs[n].mapped.iter().cloned()).collect();
         self.owner = owner;
+        {   // what `meta(eid)` names: the getters and the setters of each class
+            let mut m: HashMap<String, (Vec<String>, Vec<(String, String)>)> = HashMap::new();
+            for g in &getters { let e = m.entry(g.cls.clone()).or_default(); if !e.0.contains(&g.prop) { e.0.push(g.prop.clone()); } }
+            for s in &setters { m.entry(s.cls.clone()).or_default().1.push((s.prop.clone(), s.name.clone())); }
+            *self.members.write().unwrap_or_else(|e| e.into_inner()) = m;
+        }
         self.setters = setters;
         self.set_getters(getters);
     }
@@ -1220,6 +1232,20 @@ impl Fields {
 
     /// A getter's recalculated value, the recall guard's put-back, or an own-name store: not a setter chain, so no
     /// loop check (rule 8: getters recalculate, they are never refused).
+    /// A getter's value, written. The first one an entity gets after it was LOADED from the store is not a change (a stored row held it, so a load never differed): it is kept and its readers
+    /// recompute, but no setter hears it. Any other value is a write the setters hear.
+    fn emit_getter(&mut self, core: &mut Core, work: &mut VecDeque<Write>, eid: &str, prop: &str, new: J, seq: &mut i64, now: f64) {
+        let writer = format!("getter:{}", prop);
+        if self.quiet_load.contains(eid) && core.docs.get(eid).map_or(false, |d| !d.props.contains_key(prop)) {
+            let mut tmp = VecDeque::new();
+            self.emit_as(core, &mut tmp, eid, prop, new.clone(), &writer, seq, now, false);
+            self.mark(eid, prop);
+            self.mark_refs(prop, &J::Null, &new);
+            return;
+        }
+        self.emit_unchecked(core, work, eid, prop, new, &writer, seq, now);
+    }
+
     fn emit_unchecked(&mut self, core: &mut Core, work: &mut VecDeque<Write>, eid: &str, prop: &str, new: J, writer: &str, seq: &mut i64, now: f64) {
         self.emit_as(core, work, eid, prop, new, writer, seq, now, false)
     }
@@ -1488,8 +1514,9 @@ impl Fields {
             work.extend(std::mem::take(&mut self.late));   // what the compute wrote for a failure (`failed`, the class entry) is heard like any write
             let Some(v) = v else { continue };
             let prop = self.getters[gi].prop.clone();
-            self.emit_unchecked(core, &mut work, &e, &prop, v, &format!("getter:{}", prop), seq, now);
+            self.emit_getter(core, &mut work, &e, &prop, v, seq, now);
         }
+        self.quiet_load.clear();
         self.in_run = false;
         self.link_round(core, now);
     }
@@ -1512,6 +1539,8 @@ impl Fields {
             let (cls, keys): (String, Vec<String>) = (d.cls.clone(), d.props.keys().cloned().collect());
             self.mark_key(&(crate::vm::CLASS_READ.to_string(), cls));
             self.known.insert(e.clone());
+            self.loaded.insert(e.clone());
+            self.quiet_load.insert(e.clone());
             if d.props.contains_key("failed") { self.recon.insert(e.clone()); }
             for gi in self.getters_of(core, &e) { self.dirty.insert((self.glevel[gi], e.clone(), gi)); }
             for p in keys { self.mark(&e, &p); }
@@ -1532,9 +1561,28 @@ impl Fields {
         for p in keys { self.mark(&e, &p); }
     }
 
+    /// Computes the getters of `eid` that are dirty, lowest level first, as the settle loop would later, and says what they got (what they write is heard as any write).
+    fn compute_dirty_of(&mut self, core: &mut Core, host: &dyn Host, work: &mut VecDeque<Write>, eid: &str, now: f64, seq: &mut i64) {
+        if !self.loaded.remove(eid) { return; }   // only an entity a write has just loaded from the store: any other write keeps the order setters were written for (a setter reads the getters as they were before the write)
+        let mine: Vec<(usize, String, usize)> = self.dirty.iter().filter(|(_, e, _)| e == eid).cloned().collect();
+        for key in mine {
+            self.dirty.remove(&key);
+            let (_, e, gi) = key;
+            if !core.docs.get(&e).map_or(false, |d| class_rank(core, &e, d, &self.getters[gi].cls).is_some()) { continue; }
+            let v = self.compute(core, Some(host), &e, gi, now, seq);
+            work.extend(std::mem::take(&mut self.late));
+            let Some(v) = v else { continue };
+            let prop = self.getters[gi].prop.clone();
+            self.emit_getter(core, work, &e, &prop, v, seq, now);
+        }
+    }
+
     fn step(&mut self, core: &mut Core, host: &dyn Host, work: &mut VecDeque<Write>, w: Write, now: f64, seq: &mut i64) {
         // a write that lands on a REPLICA only wakes what reads it: no setter, no driver, no learner (docs/graph-link.md, section 2)
         if core.is_replica(&w.eid) { self.mark(&w.eid, &w.prop); self.mark_refs(&w.prop, &w.old, &w.new); return; }
+        // A getter is computed when it is wanted (operator 2026-11-24): the setters of this write read the entity's getters, and a getter of an entity that has no value yet (a stored
+        // entity this write loaded: its row holds no getter value) is dirty. Those are computed first, so a setter never reads a getter that is only waiting for its turn in the queue.
+        self.compute_dirty_of(core, host, work, &w.eid, now, seq);
         self.driver_effect(core, work, &w, now, seq);
         self.mark(&w.eid, &w.prop);
         if w.prop == crate::vm::VECTOR_PROP { if let Some(c) = core.docs.get(&w.eid).map(|e| e.cls.clone()).filter(|c| core.is_mapped(c)) { self.mark_key(&(crate::vm::VECTORS_READ.to_string(), c)); } }

@@ -346,6 +346,8 @@ pub fn infer_expr(n: &Node, env: &Env) -> Ty {
         }
         Node::Call(f, args) => call_ty(f, args, env),
         Node::Ctor(c, args) => { for (_, a) in args { infer_expr(a, env); } Ty::entity(c) }
+        // an entity stays what it is, a text that names one is an entity whose class is not known
+        Node::Dyn(e) => { let t = infer_expr(e, env); if !t.any && !t.kinds.is_empty() && t.kinds.iter().all(|k| matches!(k, Kind::Entity(_))) { t } else { Ty::any() } }
         Node::Ent(parts) => {
             // the class is the first segment after a namespace; a key that may be null (or is not an int or text) makes the id null, or an Error
             let (mut nullable, mut err) = (false, false);
@@ -478,6 +480,7 @@ fn call_ty_in(f: &str, args: &[Node], tys: &[Ty], env: &Env) -> Ty {
         "replace" => { if ar(3, 3) { for i in 0..3 { chk(i, Acc::Text); } } Ty::text() }
         "startswith" => { if ar(2, 2) { chk(0, Acc::Text); chk(1, Acc::Text); } Ty::bool() }
         "keys" => { ar(1, 1); Ty::list(Ty::text()) }
+        "meta" => { if ar(1, 1) { chk(0, Acc::Text); } Ty::dict() }   // the names of an entity (#1143)
         "lines" | "words" => { if ar(1, 1) { chk(0, Acc::Text); } Ty::list(Ty::text()) }
         "spans" => { if ar(2, 2) { chk(0, Acc::Text); chk(1, Acc::Text); } Ty::list(Ty::dict()) }   // [{start, end, text}] (#1143)
         "join" => { if ar(2, 2) { chk(0, Acc::List); chk(1, Acc::Text); } Ty::text() }
@@ -501,8 +504,6 @@ fn call_ty_in(f: &str, args: &[Node], tys: &[Ty], env: &Env) -> Ty {
         }
         "pluck" => { if ar(2, 2) { chk(0, Acc::List); chk(1, Acc::Text); } Ty::list(Ty::any()) }
         "group_by" => { if ar(2, 3) { chk(0, Acc::List); chk(1, Acc::Text); chk(2, Acc::List); } Ty::list(Ty::dict()) }
-        // props(ids, 'name') / props(ids, at, 'name'): the values are whatever the entities hold
-        "props" => { if ar(2, 3) { chk(0, Acc::List); if n == 3 { chk(1, Acc::List); } chk(n - 1, Acc::Text); } Ty::list(Ty::any()) }
         // vmean(ids): a vector, or a null when no id has one
         "vmean" => { if ar(1, 1) { chk(0, Acc::List); } Ty::list(Ty::float()).nullable() }
         "concat" => {
@@ -520,19 +521,6 @@ fn call_ty_in(f: &str, args: &[Node], tys: &[Ty], env: &Env) -> Ty {
         "str" => { ar(1, 1); Ty::text() }
         "before" | "after" => { if ar(2, 2) { chk(0, Acc::Text); chk(1, Acc::Text); } Ty::text() }
         "referencing" => { ar(2, 2); Ty::list(Ty::entity("*")) }
-        "prop" => {
-            if !ar(2, 2) { return Ty::any(); }
-            let t = &tys[0];
-            if t.any || t.kinds.is_empty() { return Ty::any(); }
-            let mut r = Ty::never();
-            for k in &t.kinds {
-                r = r.join(&match (k, const_str(&args[1])) {
-                    (Kind::Entity(c), Some(p)) if c != "*" => (env.lookup)(c, p).unwrap_or_else(Ty::any),
-                    _ => Ty::any(),
-                });
-            }
-            r.nullable()
-        }
         // the host's own functions (drivers, the seat's recall): untyped edges, except `instances`
         "instances" => match args.first().and_then(const_str) { Some(c) => Ty::list(Ty::entity(c)), None => Ty::list(Ty::entity("*")) },
         _ => Ty::any(),
@@ -708,6 +696,7 @@ fn walk_reads(n: &Node, env: &Env, out: &mut Vec<Read>) {
             if let Some(k) = const_str(i) {
                 let t = infer_expr(b, env);
                 if !t.any && t.kinds.iter().any(|x| matches!(x, Kind::Entity(c) if c != "*")) { read_on(&t, k, out); }
+                else if matches!(&**b, Node::Dyn(_)) { read_on(&t, k, out); }   // `${id}['n']` names a field of an entity whose class is not known: ordered after every getter of that name, as `prop(id, 'n')` was
             }
         }
         Node::Bin(_, a, b) => { walk_reads(a, env, out); walk_reads(b, env, out); }
@@ -723,7 +712,7 @@ fn walk_reads(n: &Node, env: &Env, out: &mut Vec<Read>) {
         }
         Node::Call(f, args) => {
             each(args, env, out);
-            // a string that is the last argument of a call names a field (`prop(row, 'name')`, `pluck(rows, 'name')`)
+            // a string that is the last argument of a call names a field (`${row}['name']`, `pluck(rows, 'name')`)
             if let Some(k) = args.last().and_then(const_str) {
                 if f == "prop" && args.len() == 2 { read_on(&infer_expr(&args[0], env), k, out); }
                 else { out.push(Read { name: k.into(), cls: None }); }
@@ -731,6 +720,7 @@ fn walk_reads(n: &Node, env: &Env, out: &mut Vec<Read>) {
         }
         Node::Ctor(_, args) => for (_, x) in args { walk_reads(x, env, out) },
         Node::Ent(parts) => for p in parts { if let EntPart::Key(k) = p { walk_reads(k, env, out) } },
+        Node::Dyn(e) => walk_reads(e, env, out),
     }
 }
 

@@ -92,9 +92,9 @@ const SHELF: &str = "PACK t 1
 Shelf.listed on-setter books:
   ALWAYS:
     FOR b IN this.listed:
-      ('Book:' + this.name + ':' + prop(b, 'title')).title = prop(b, 'title')
-      ('Book:' + this.name + ':' + prop(b, 'title')).shelf = this.eid
-      FOR t IN (prop(b, 'tags') or []):
+      ('Book:' + this.name + ':' + b['title']).title = b['title']
+      ('Book:' + this.name + ':' + b['title']).shelf = this.eid
+      FOR t IN (b['tags'] or []):
         ('Tag:' + t).seen = True
     this.count = len(this.listed or [])
 ";
@@ -124,10 +124,10 @@ fn a_for_over_a_non_list_stops_the_setter_with_a_receipt() {
 #[test]
 fn for_is_a_list_in_getters_and_in_setter_values() {
     let pack = "PACK t 1
-Shelf.titles getter: FOR b IN (this.listed or []): prop(b, 'title')
+Shelf.titles getter: FOR b IN (this.listed or []): b['title']
 Shelf.listed on-setter copy:
   ALWAYS:
-    this.upper = FOR b IN this.listed: prop(b, 'title') + '!'
+    this.upper = FOR b IN this.listed: b['title'] + '!'
 ";
     let (mut c, mut f) = world(pack);
     put(&mut c, &mut f, "Shelf:a", "listed", json!([{"title": "dune"}, {"title": "emma"}]));
@@ -165,7 +165,7 @@ fn a_for_block_prints_and_parses_back_the_same() {
 
 #[test]
 fn a_for_over_entities_binds_each_entity() {
-    let pack = format!("{}Book.title getter: this.title\nTag.kind getter: 'tag'\nShelf.sweep on-setter retire:\n  ALWAYS:\n    FOR b IN referencing(this, 'shelf'):\n      b.kept = prop(b, 'title') in (this.sweep or [])\n", SHELF);
+    let pack = format!("{}Book.title getter: this.title\nTag.kind getter: 'tag'\nShelf.sweep on-setter retire:\n  ALWAYS:\n    FOR b IN referencing(this, 'shelf'):\n      b.kept = b['title'] in (this.sweep or [])\n", SHELF);
     let (mut c, mut f) = world(&pack);
     put(&mut c, &mut f, "Shelf:a", "listed", json!([{"title": "dune"}, {"title": "emma"}]));
     put(&mut c, &mut f, "Shelf:a", "sweep", json!(["emma"]));
@@ -175,7 +175,7 @@ fn a_for_over_entities_binds_each_entity() {
 
 #[test]
 fn prop_reads_a_field_through_an_entitys_id_and_follows_it() {
-    let pack = "PACK t 1\nBook.shelf_name getter: prop(this.shelf, 'name')\nShelf.kind getter: 'shelf'\n";
+    let pack = "PACK t 1\nBook.shelf_name getter: ${this.shelf}['name']\nShelf.kind getter: 'shelf'\n";
     let mut f = Fields::goalgraph();
     f.set_pack("t", pack).unwrap();
     let mut c = Core::new();
@@ -190,7 +190,7 @@ fn prop_reads_a_field_through_an_entitys_id_and_follows_it() {
 
 #[test]
 fn instances_lists_a_class_and_follows_births_and_writes() {
-    let pack = "PACK t 1\nShelf.books getter: [prop(b, 'title') for b in instances('Book')]\nBook.kind getter: 'book'\n";
+    let pack = "PACK t 1\nShelf.books getter: [b['title'] for b in instances('Book')]\nBook.kind getter: 'book'\n";
     let (mut c, mut f) = world(pack);
     c.load("Book:1".into(), "Book".into(), json!({"title": "dune"}).as_object().unwrap().clone(), None, 0.0);
     put(&mut c, &mut f, "Shelf:a", "poke", json!(1));

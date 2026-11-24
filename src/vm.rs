@@ -55,6 +55,8 @@ pub enum Storage { Lazy, Virtual, Resident }
 /// class -> storage mode, ONE table: `Fields::compose` writes it, the core reads it (`.pinned`).
 pub type StorageMap = std::sync::Arc<std::sync::RwLock<HashMap<String, Storage>>>;
 /// class -> dtype of the MAPPED classes (`MAPPED Vector f16`): ONE table, `Fields::compose` writes it, the core reads it.
+/// class -> (its getters' names, its setters' (prop, name)), ONE table: `Fields::compose` writes it, the core reads it (`meta(eid)`).
+pub type MembersMap = std::sync::Arc<std::sync::RwLock<HashMap<String, (Vec<String>, Vec<(String, String)>)>>>;
 pub type MappedMap = std::sync::Arc<std::sync::RwLock<HashMap<String, String>>>;
 
 /// The class names of a `parents` value (`cls:<name>` entries, the name after the last colon): a list, or one entry.
@@ -238,6 +240,7 @@ pub struct Core {
     /// the touch clock's counter (see `Ent::touched`) and the classes' storage modes (shared with `Fields`)
     pub clock: std::cell::Cell<u64>,
     pub storage: StorageMap,
+    pub members: MembersMap,
     /// the MAPPED classes and the native vector store their `v` lives in (vecstore.rs; docs/cliffvm.md, "Storage modes"). Never evicted: the memory policy unloads entity rows only.
     pub mapped: MappedMap,
     pub vectors: crate::vecstore::VecStores,
@@ -378,6 +381,32 @@ impl<'a> expr::World for View<'a> {
         if !self.core.docs.contains_key(eid) && self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); }
         crate::fields::entity_is(self.core, eid, cls)
     }
+    /// `meta('Class:id')` (#1143): the class, its parents, the names of the properties the entity holds (a getter's value is not one), and the getters and setters of its classes. Names only.
+    /// A stored entity that is not loaded is asked for, as `attr` does.
+    fn meta(&self, eid: &str) -> V {
+        let Some(e) = self.core.docs.get(eid) else {
+            if self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); return V::None; }   // stored, not loaded: asked for
+            return V::Nil(Reason::Ent(format!("Absent:{eid} does not exist")));   // not there: a null that says so, as `attr` does
+        };
+        let classes = e.class_names();
+        let (mut getters, mut setters): (Vec<String>, Vec<(String, String)>) = (vec![], vec![]);
+        {
+            let m = self.core.members.read().unwrap_or_else(|x| x.into_inner());
+            let mut hit: Vec<&String> = m.keys().filter(|k| k.as_str() == crate::fields::ROOT_CLASS || classes.iter().any(|c| c.eq_ignore_ascii_case(k))).collect();
+            hit.sort();
+            for k in hit { let (g, s) = &m[k]; for n in g { if !getters.contains(n) { getters.push(n.clone()); } } for p in s { if !setters.contains(p) { setters.push(p.clone()); } } }
+        }
+        let mut props: Vec<String> = e.props.keys().filter(|k| !getters.contains(k) && !matches!(k.as_str(), "parents" | "failed")).cloned().collect();
+        props.sort();
+        let list = |v: Vec<String>| V::List(v.into_iter().map(V::Str).collect());
+        V::Dict(vec![
+            ("class".into(), self.attr(eid, "cls")),
+            ("parents".into(), list(classes)),
+            ("properties".into(), list(props)),
+            ("getters".into(), list(getters)),
+            ("setters".into(), V::List(setters.into_iter().map(|(p, n)| V::Dict(vec![("prop".into(), V::Str(p)), ("name".into(), V::Str(n))])).collect())),
+        ])
+    }
 }
 
 /// A view that records what an evaluation read: (eid, field) for every attribute, and (REFS, prop) for every
@@ -407,6 +436,15 @@ impl<'a> expr::World for Traced<'a> {
     fn is_class(&self, eid: &str, cls: &str) -> bool {
         self.reads.borrow_mut().push((eid.to_string(), "parents".to_string()));
         self.inner.is_class(eid, cls)
+    }
+    /// every property of the entity is read: a change of any of them (and a new one, and its classes) makes the getter that asked dirty
+    fn meta(&self, eid: &str) -> V {
+        let m = self.inner.meta(eid);
+        if let V::Dict(d) = &m {
+            self.reads.borrow_mut().push((eid.to_string(), "parents".to_string()));
+            for (k, v) in d { if k == "properties" { if let V::List(l) = v { for n in l { if let V::Str(n) = n { self.reads.borrow_mut().push((eid.to_string(), n.clone())); } } } } }
+        }
+        m
     }
     /// The host's functions run on live rounds only: a silent compute (rebuild, birth) never calls out, its value
     /// is None until the next live round reads its inputs again.
@@ -455,7 +493,7 @@ impl Core {
     pub fn new() -> Self {
         Core {
             why: Default::default(), nulled: Default::default(), nested_last: vec![], locals: Default::default(),
-            inst_scans: Default::default(), inst_cache: Default::default(), docs: HashMap::new(), unloaded: HashMap::new(), wanted: Default::default(), own_ns: None, replicas: Default::default(), foreign_reads: Default::default(), loader: None, arrived: vec![], last_now: 0.0, updated: HashMap::new(), born_by: HashMap::new(), clock: Default::default(), storage: Default::default(), mapped: Default::default(), vectors: Default::default(), ref_in: Default::default(), ref_of: Default::default(), ref_holders: Default::default(), virt_live: Default::default(), gc_candidates: Default::default(), gc_owners: Default::default(), host_held: Default::default(), collected: Default::default(), collected_set: Default::default(), order: Vec::new(), at: HashMap::new(), triggers: Vec::new(),
+            inst_scans: Default::default(), inst_cache: Default::default(), docs: HashMap::new(), unloaded: HashMap::new(), wanted: Default::default(), own_ns: None, replicas: Default::default(), foreign_reads: Default::default(), loader: None, arrived: vec![], last_now: 0.0, updated: HashMap::new(), born_by: HashMap::new(), clock: Default::default(), storage: Default::default(), members: Default::default(), mapped: Default::default(), vectors: Default::default(), ref_in: Default::default(), ref_of: Default::default(), ref_holders: Default::default(), virt_live: Default::default(), gc_candidates: Default::default(), gc_owners: Default::default(), host_held: Default::default(), collected: Default::default(), collected_set: Default::default(), order: Vec::new(), at: HashMap::new(), triggers: Vec::new(),
             by_prop: HashMap::new(), always: HashSet::new(), seen: HashMap::new(), state: HashMap::new(),
             q: VecDeque::new(), queue_writes: true, dropped: 0, fired: HashMap::new(), refused: HashMap::new(), errors: HashMap::new(),
             seq: 0, learner: false, trace: None, cur: None, cache: expr::Cache::new(), ref_ix: Default::default(),
