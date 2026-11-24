@@ -378,6 +378,13 @@ impl<'a> expr::World for View<'a> {
         if !self.core.docs.contains_key(eid) && self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); }
         crate::fields::entity_is(self.core, eid, cls)
     }
+    /// `keys('Class:id')`: the names of the properties the entity holds in memory (a getter's value is one of them). A stored entity that is not loaded is asked for, as `attr` does.
+    fn prop_names(&self, eid: &str) -> Option<Vec<String>> {
+        match self.core.docs.get(eid) {
+            Some(e) => Some(e.props.keys().cloned().collect()),
+            None => { if self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); } None }
+        }
+    }
 }
 
 /// A view that records what an evaluation read: (eid, field) for every attribute, and (REFS, prop) for every
@@ -407,6 +414,12 @@ impl<'a> expr::World for Traced<'a> {
     fn is_class(&self, eid: &str, cls: &str) -> bool {
         self.reads.borrow_mut().push((eid.to_string(), "parents".to_string()));
         self.inner.is_class(eid, cls)
+    }
+    /// every property of the entity is read: a change of any of them (and a new one) makes the getter that asked dirty
+    fn prop_names(&self, eid: &str) -> Option<Vec<String>> {
+        let names = self.inner.prop_names(eid);
+        for n in names.iter().flatten() { self.reads.borrow_mut().push((eid.to_string(), n.clone())); }
+        names
     }
     /// The host's functions run on live rounds only: a silent compute (rebuild, birth) never calls out, its value
     /// is None until the next live round reads its inputs again.

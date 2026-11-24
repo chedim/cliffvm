@@ -77,3 +77,25 @@ fn a_setter_on_a_row_that_is_loaded_by_the_write_finds_the_getters_it_reads_comp
     h.write("Box:a", "go", json!(1), "person");
     assert_eq!(h.get("Box:a", "hit"), json!(1), "the setter read `this.kind`, which was computed before the setter ran");
 }
+
+const PULL: &str = "PACK pl 1
+Req.go on-setter mk:
+  ALWAYS:
+    Msg:m = Msg(n: 3)
+Msg.view getter: this.n * 2
+Req.out getter: ('ok' if prop('Msg:m', 'view') != None else 'missing') if this.go != None else None
+Req.out on-setter first:
+  WHEN this.out != None and this.seen == None:
+    this.seen = this.out
+";
+
+#[test]
+fn a_getter_that_reads_a_getter_of_another_entity_is_computed_after_it_not_before() {
+    let mut o = Options::new(None); o.effects = false;
+    let h = Host::open(o).unwrap();
+    h.load_pack("pl", PULL).unwrap(); h.rebuild();
+    h.born("Req:r", "Req", props(json!({})), "person");
+    h.write("Req:r", "go", json!(1), "person");
+    assert_eq!(h.get("Req:r", "out"), json!("ok"), "converged");
+    assert_eq!(h.get("Req:r", "seen"), json!("ok"), "and the first value anyone saw was the right one: the dependency was computed first");
+}
