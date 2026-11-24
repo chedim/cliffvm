@@ -37,7 +37,8 @@ fn a_property_the_entity_lacks_is_a_null_and_a_null_id_is_a_null() {
 
 #[test]
 fn only_a_text_names_an_entity_and_a_dollar_alone_is_not_an_expression() {
-    assert!(run("${n}.x").is_err(), "a number is not an id");
+    assert!(ok("${n}['x']").is_null(), "a number names no entity: a null, as the removed prop(3, 'x') read it");
+    assert!(ok("${[1]}['x']").is_null() && ok("${True}['x']").is_null(), "so do a list and a bool");
     assert!(run("$x").is_err());
     assert_eq!(ok("'${t}'"), json!("${t}"), "inside quotes it is text, as always");
 }

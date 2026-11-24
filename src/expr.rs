@@ -1402,7 +1402,7 @@ fn ev_node(n: &Node, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> 
             V::Str(id) if !id.is_empty() => Ok(V::Ent(id)),
             v @ (V::Ent(_) | V::Dict(_)) => Ok(v),   // a dict stays a dict (`${d}['k']` is its key, as the removed `prop(d, 'k')` read it)
             v @ (V::None | V::Nil(_) | V::Error(_)) => Ok(v),
-            v => Err(format!("${{...}} is an entity id (a text), got a {}", kind_of(&v))),
+            _ => Ok(V::None),   // a number, a bool or a list names no entity: a null, as the removed `prop(x, 'k')` read it
         },
         Node::Ctor(c, _) => Err(format!("a constructor creates the entity on the left of a write: write `<entity> = {}(name: value)`", c)),
     }
