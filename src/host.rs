@@ -343,7 +343,7 @@ impl Host {
         }
         let mut fields = Fields::goalgraph();
         core.mapped = fields.mapped_handle();
-        core.storage = fields.storage_handle();   // the core reads the classes' modes too (`.pinned`)
+        core.members = fields.members_handle(); core.storage = fields.storage_handle();   // the core reads the classes' modes too (`.pinned`)
         fields.inbound_by_host = true;
         fields.recall = true;   // the guard of `recall:dials`: a write that fails its guard is put back (fields.rs `recall_on`)
         fields.calls_refused = true;

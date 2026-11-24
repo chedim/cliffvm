@@ -358,6 +358,7 @@ pub struct Fields {
     skipped: std::collections::BTreeMap<(String, String, String, String), String>,
     /// class -> its storage mode, from the active owner packs' VIRTUAL / RESIDENT header lines (`compose`)
     storage: crate::vm::StorageMap,
+    members: crate::vm::MembersMap,
     /// class -> dtype of the MAPPED classes (`MAPPED <Class> f16`: their `v` lives in the native vector store, vecstore.rs); shared with the core
     mapped: crate::vm::MappedMap,
     /// set while the setters of a write on a VIRTUAL entity run: what they write to a stored entity is marked `virt` in `out`, so the host journals it as an
@@ -406,12 +407,13 @@ impl Fields {
     pub fn storage_of(&self, cls: &str) -> Storage { self.storage.read().unwrap_or_else(|e| e.into_inner()).get(cls).copied().unwrap_or(Storage::Lazy) }
     /// The class table the engine's core reads too (`Core::storage`): one shared map, written by `compose`.
     pub fn storage_handle(&self) -> crate::vm::StorageMap { self.storage.clone() }
+    pub fn members_handle(&self) -> crate::vm::MembersMap { self.members.clone() }
     pub fn mapped_handle(&self) -> crate::vm::MappedMap { self.mapped.clone() }
     pub fn goalgraph() -> Self {
         let mut f = Fields { link: Default::default(), setters: on_setters(), calls: vec![], writes: 0, recall: false, adapters: false, method_calls: vec![], learn: None, accepted: Default::default(), visited: Default::default(), refusals: vec![], out: vec![], retired: vec![], inbound_by_host: false, calls_refused: false, refused_by: Default::default(), receipt_n: 0,
             getters: vec![], glevel: vec![], deps: Default::default(), reads: Default::default(), dirty: Default::default(),
             known: Default::default(), primed: false, fresh: vec![], late: vec![], flips: Default::default(), class_deferred: Default::default(), recon: Default::default(), in_run: false, packs: Default::default(),
-            owner: Default::default(), imports: Default::default(), pack_errors: Default::default(), load_order: vec![], granted: Default::default(), layer_of: Default::default(), claimed: Default::default(), skipped: Default::default(), storage: Default::default(), mapped: Default::default(), trigger_virtual: false };
+            owner: Default::default(), imports: Default::default(), pack_errors: Default::default(), load_order: vec![], granted: Default::default(), layer_of: Default::default(), claimed: Default::default(), skipped: Default::default(), storage: Default::default(), members: Default::default(), mapped: Default::default(), trigger_virtual: false };
         let gg = crate::syntax::parse_full(crate::translate::GOALGRAPH_CH).expect("packs/goalgraph.c1f parses");
         f.packs.insert("goalgraph".into(), gg);
         f.load_order.push("goalgraph".into());
@@ -604,6 +606,12 @@ impl Fields {
         *self.storage.write().unwrap_or_else(|e| e.into_inner()) = modes;
         *self.mapped.write().unwrap_or_else(|e| e.into_inner()) = active.iter().flat_map(|n| self.packs[n].mapped.iter().cloned()).collect();
         self.owner = owner;
+        {   // what `meta(eid)` names: the getters and the setters of each class
+            let mut m: HashMap<String, (Vec<String>, Vec<(String, String)>)> = HashMap::new();
+            for g in &getters { let e = m.entry(g.cls.clone()).or_default(); if !e.0.contains(&g.prop) { e.0.push(g.prop.clone()); } }
+            for s in &setters { m.entry(s.cls.clone()).or_default().1.push((s.prop.clone(), s.name.clone())); }
+            *self.members.write().unwrap_or_else(|e| e.into_inner()) = m;
+        }
         self.setters = setters;
         self.set_getters(getters);
     }

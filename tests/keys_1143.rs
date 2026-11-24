@@ -40,7 +40,7 @@ fn it_reads_a_dict_held_by_an_entity_and_composes_with_the_other_builtins() {
 fn a_read_that_has_not_arrived_is_an_empty_list_and_anything_else_is_an_error() {
     assert_eq!(ok("keys(prop('A:9', 'd'))"), json!([]), "an absent property is a pending read: nothing to list");
     assert!(err("keys([1, 2])").contains("keys"), "a list has no keys");
-    assert_eq!(ok("keys('text')"), json!([]), "a text is an entity id now: no such entity, no names (it was an error before an entity could be named)");
+    assert!(err("keys('text')").contains("keys"), "a text has no keys (an entity's names are `meta`)");
     assert!(err("keys(1)").contains("keys"), "a number has no keys");
     assert!(err("keys(1, 2)").contains("keys"), "one argument");
 }
@@ -60,29 +60,4 @@ fn it_costs_a_handful_of_steps_whatever_the_size_of_the_dict() {
 #[test]
 fn keys_is_a_reserved_name_like_the_other_builtins() {
     assert!(expr::RESERVED.contains(&"keys"));
-}
-
-// ---- an entity (operator 2026-11-24): its property names, the getters' included, from memory -------------------------------------------------------------------------
-struct E(HashMap<(String, String), V>);
-impl expr::World for E {
-    fn attr(&self, eid: &str, attr: &str) -> V { self.0.get(&(eid.to_string(), attr.to_string())).cloned().unwrap_or_else(|| V::absent(format!("{eid}.{attr}"))) }
-    fn prop_names(&self, eid: &str) -> Option<Vec<String>> {
-        let mut v: Vec<String> = self.0.keys().filter(|(e, _)| e == eid).map(|(_, p)| p.clone()).collect();
-        v.sort();
-        if v.is_empty() { None } else { Some(v) }
-    }
-}
-fn entity_world() -> E {
-    let mut m = HashMap::new();
-    m.insert(("A:1".to_string(), "n".to_string()), V::Int(1));
-    m.insert(("A:1".to_string(), "twice".to_string()), V::Int(2));
-    E(m)
-}
-fn run_e(src: &str) -> V { let n = expr::parse(src).unwrap(); expr::eval(&n, &HashMap::new(), &entity_world()).unwrap() }
-
-#[test]
-fn the_keys_of_an_entity_are_the_names_of_its_properties_the_getters_included() {
-    assert_eq!(expr::to_json(&run_e("keys('A:1')")).unwrap(), json!(["n", "twice"]));
-    assert_eq!(expr::to_json(&run_e("keys('A:9')")).unwrap(), json!([]), "no such entity: no names");
-    assert_eq!(expr::to_json(&run_e("[k + '=' + str(prop('A:1', k)) for k in keys('A:1')]")).unwrap(), json!(["n=1", "twice=2"]), "and each one reads");
 }

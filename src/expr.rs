@@ -394,7 +394,7 @@ pub const RESERVED: &[&str] = &[
     "dot", "norm", "distance", "unit", "abs", "min", "max", "len", "lower", "strip", "replace", "startswith", "lines", "words", "spans",
     "join", "head", "tail", "sort_by", "unspeak", "before", "after", "pluck", "distinct", "group_by", "concat", "fit", "clip", "ago",
     "plain", "num", "epoch", "localtime", "json", "str", "referencing", "prop", "why",
-    "instances", "jsonl", "listdir", "read", "sql", "stat", "recall", "rerank", "pronoun", "near", "vsum", "fold", "log", "vmean", "props", "keys",
+    "instances", "jsonl", "listdir", "read", "sql", "stat", "recall", "rerank", "pronoun", "near", "vsum", "fold", "log", "vmean", "props", "keys", "meta",
     "it", "that", "they", "them", "these", "those", "he", "him", "she", "her",
     "and", "or", "not", "in", "is", "if", "else", "lambda", "for", "await", "yield",
 ];
@@ -751,8 +751,8 @@ pub trait World {
     fn host(&self, _f: &str, _a: &[V]) -> Option<Result<V, Err>> { None }
     /// Is the entity of this class: its `parents` (nearest first), an ancestor's, or the root `Entity`? (`x is Trip`)
     fn is_class(&self, _eid: &str, _cls: &str) -> bool { false }
-    /// The names of an entity's properties as the engine holds them in memory, a getter's included: `keys('Class:id')`. None: no such entity (or not loaded).
-    fn prop_names(&self, _eid: &str) -> Option<Vec<String>> { None }
+    /// `meta(eid)`: the metadata of an entity as a dict of names (class, parents, properties, getters, setters), no values. A null when it is not there or not loaded yet.
+    fn meta(&self, _eid: &str) -> V { V::None }
 }
 
 pub fn nullish(v: &V) -> bool { matches!(v, V::None | V::Nil(_)) }
@@ -1096,7 +1096,8 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
         "startswith" => { argn(2)?; Ok(V::Bool(text_of(&a[0])?.starts_with(&text_of(&a[1])?))) }
         "lines" => { argn(1)?; Ok(V::List(text_of(&a[0])?.lines().map(|l| V::Str(l.to_string())).collect())) }
         // the keys of a dict, in the order it holds them; a read still pending is an empty list (as `pluck`)
-        "keys" => { argn(1)?; match &a[0] { V::Dict(d) => Ok(V::List(d.iter().map(|(k, _)| V::Str(k.clone())).collect())), V::Str(id) => Ok(V::List(w.prop_names(id).unwrap_or_default().into_iter().map(V::Str).collect())), V::None | V::Nil(_) => Ok(V::List(vec![])), _ => Err("keys(d): d is a dict or an entity".into()) } }
+        "keys" => { argn(1)?; match &a[0] { V::Dict(d) => Ok(V::List(d.iter().map(|(k, _)| V::Str(k.clone())).collect())), V::None | V::Nil(_) => Ok(V::List(vec![])), _ => Err("keys(d): d is a dict".into()) } }
+        "meta" => { argn(1)?; match &a[0] { V::Str(id) => Ok(w.meta(id)), V::None | V::Nil(_) => Ok(V::None), _ => Err("meta(eid): eid is an entity id".into()) } }
         "words" => { argn(1)?; Ok(V::List(text_of(&a[0])?.split_whitespace().map(|w| V::Str(w.to_string())).collect())) }
         "spans" => {      // the tokenizer (#1143): [{start, end, text}] of a layer, offsets in chars (docs/semtext-and-legs.md)
             argn(2)?;
