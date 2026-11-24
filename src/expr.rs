@@ -1531,6 +1531,20 @@ fn index_value(base: V, idx: V, w: &dyn World) -> Result<V, Err> {
                     Ok(if at >= 0 && at < n { l[at as usize].clone() } else { V::None })
                 }
                 (V::Dict(d), V::Str(k)) => Ok(d.iter().find(|(x, _)| *x == k).map(|(_, v)| v.clone()).unwrap_or(V::None)),
+                // a list of values indexed by a list (`${ids}.name[at]`): the i-th value takes at[i], a list by its index and a dict by its key; a miss, a null value or a null index is a null
+                (V::List(l), V::List(at)) => {
+                    if l.len() != at.len() { return Err(format!("{} values and {} indexes (one index per value)", l.len(), at.len())); }
+                    let mut out = Vec::with_capacity(l.len());
+                    for (i, (v, k)) in l.into_iter().zip(at.into_iter()).enumerate() {
+                        out.push(match (&v, &k) {
+                            (_, V::List(_) | V::Dict(_) | V::Float(_) | V::Bool(_)) => return Err(format!("index {i} is a {}, not an index (a whole number or a key)", kind_of(&k))),
+                            (V::Error(_), _) => v,
+                            (V::None | V::Nil(_), _) | (_, V::None | V::Nil(_)) => V::None,
+                            _ => match index_value(v, k, w) { Ok(x) => x, Err(e) => return Err(format!("item {i}: {e}")) },
+                        });
+                    }
+                    Ok(V::List(out))
+                }
                 // a list of entities (what `${ids}` makes) indexed by a name: that property of each, in one step
                 (V::List(l), V::Str(k)) if l.iter().all(|x| matches!(x, V::Ent(_) | V::Dict(_) | V::None | V::Nil(_))) => {
                     if k.starts_with('_') { return Err(format!("no attribute {:?}", k)); }

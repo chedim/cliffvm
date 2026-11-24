@@ -13,6 +13,9 @@ fn world() -> W {
     m.insert(("Command:x".to_string(), "status".to_string()), V::Str("ok".into()));
     m.insert(("Command:x".to_string(), "rc".to_string()), V::Int(0));
     m.insert(("Command:y".to_string(), "status".to_string()), V::Str("bad".into()));
+    m.insert(("Command:x".to_string(), "ids".to_string()), expr::from_json(&json!(["x0", "x1", "x2"])));
+    m.insert(("Command:y".to_string(), "ids".to_string()), expr::from_json(&json!(["y0", "y1"])));
+    m.insert(("Command:y".to_string(), "d".to_string()), expr::from_json(&json!({"k": "one"})));
     W(m)
 }
 fn run(src: &str) -> Result<V, String> {
@@ -88,4 +91,21 @@ fn it_is_one_step_however_many_ids() {
     let r = expr::eval(&n, &env, &world());
     expr::set_eval_budget(None);
     match r { Ok(V::List(l)) => assert_eq!(l.len(), 5000), other => panic!("under a budget of 8 steps: {other:?}") }
+}
+
+// ---- one element of each value: `${ids}.name[at]`, the i-th value takes `at[i]` (what `props(ids, at, name)` was) ---------------------------------------------------------
+
+#[test]
+fn a_list_of_values_indexed_by_a_list_takes_one_element_of_each_in_step() {
+    assert_eq!(ok("${['Command:x', 'Command:y', 'Command:x']}['ids'][[2, 0, 1]]"), json!(["x2", "y0", "x1"]), "a list by its index");
+    assert_eq!(ok("${['Command:y']}['d'][['k']]"), json!(["one"]), "a dict by its key");
+    assert_eq!(ok("${['Command:x', 'Command:y']}.ids[[-1, 1]]"), json!(["x2", "y1"]), "negative from the end; .name works too");
+}
+
+#[test]
+fn a_null_or_a_missing_one_is_a_null_and_a_wrong_shape_says_why() {
+    assert_eq!(ok("${['Command:x', 'Command:y']}['ids'][[5, None]]"), json!([null, null]), "past the end, a null index");
+    assert!(run("${['Command:x', 'Command:y']}['ids'][[0]]").unwrap_err().contains("one index per"), "the lists are as long as each other");
+    assert!(run("${['Command:x']}['ids'][[[1]]]").unwrap_err().contains("index"), "an index is a whole number or a key");
+    assert!(run("${['Command:x']}['ids'][[1.5]]").unwrap_err().contains("index"));
 }
