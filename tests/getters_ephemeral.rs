@@ -83,7 +83,7 @@ Req.go on-setter mk:
   ALWAYS:
     Msg:m = Msg(n: 3)
 Msg.view getter: this.n * 2
-Req.out getter: ('ok' if prop('Msg:m', 'view') != None else 'missing') if this.go != None else None
+Req.out getter: ('ok' if ${'Msg:m'}['view'] != None else 'missing') if this.go != None else None
 Req.out on-setter first:
   WHEN this.out != None and this.seen == None:
     this.seen = this.out

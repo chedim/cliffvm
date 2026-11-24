@@ -503,8 +503,6 @@ fn call_ty_in(f: &str, args: &[Node], tys: &[Ty], env: &Env) -> Ty {
         }
         "pluck" => { if ar(2, 2) { chk(0, Acc::List); chk(1, Acc::Text); } Ty::list(Ty::any()) }
         "group_by" => { if ar(2, 3) { chk(0, Acc::List); chk(1, Acc::Text); chk(2, Acc::List); } Ty::list(Ty::dict()) }
-        // props(ids, 'name') / props(ids, at, 'name'): the values are whatever the entities hold
-        "props" => { if ar(2, 3) { chk(0, Acc::List); if n == 3 { chk(1, Acc::List); } chk(n - 1, Acc::Text); } Ty::list(Ty::any()) }
         // vmean(ids): a vector, or a null when no id has one
         "vmean" => { if ar(1, 1) { chk(0, Acc::List); } Ty::list(Ty::float()).nullable() }
         "concat" => {
@@ -522,19 +520,6 @@ fn call_ty_in(f: &str, args: &[Node], tys: &[Ty], env: &Env) -> Ty {
         "str" => { ar(1, 1); Ty::text() }
         "before" | "after" => { if ar(2, 2) { chk(0, Acc::Text); chk(1, Acc::Text); } Ty::text() }
         "referencing" => { ar(2, 2); Ty::list(Ty::entity("*")) }
-        "prop" => {
-            if !ar(2, 2) { return Ty::any(); }
-            let t = &tys[0];
-            if t.any || t.kinds.is_empty() { return Ty::any(); }
-            let mut r = Ty::never();
-            for k in &t.kinds {
-                r = r.join(&match (k, const_str(&args[1])) {
-                    (Kind::Entity(c), Some(p)) if c != "*" => (env.lookup)(c, p).unwrap_or_else(Ty::any),
-                    _ => Ty::any(),
-                });
-            }
-            r.nullable()
-        }
         // the host's own functions (drivers, the seat's recall): untyped edges, except `instances`
         "instances" => match args.first().and_then(const_str) { Some(c) => Ty::list(Ty::entity(c)), None => Ty::list(Ty::entity("*")) },
         _ => Ty::any(),
@@ -725,7 +710,7 @@ fn walk_reads(n: &Node, env: &Env, out: &mut Vec<Read>) {
         }
         Node::Call(f, args) => {
             each(args, env, out);
-            // a string that is the last argument of a call names a field (`prop(row, 'name')`, `pluck(rows, 'name')`)
+            // a string that is the last argument of a call names a field (`${row}['name']`, `pluck(rows, 'name')`)
             if let Some(k) = args.last().and_then(const_str) {
                 if f == "prop" && args.len() == 2 { read_on(&infer_expr(&args[0], env), k, out); }
                 else { out.push(Read { name: k.into(), cls: None }); }

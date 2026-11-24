@@ -20,7 +20,7 @@ fn born(h: &Host, eid: &str, props: J) {
 
 #[test]
 fn a_missing_property_is_a_null_that_says_absent_and_names_the_entity_and_the_property() {
-    let h = host("PACK sem 1\nBox.why getter: why(this.price)\nBox.viaprop getter: why(prop(this, 'cost'))\n");
+    let h = host("PACK sem 1\nBox.why getter: why(this.price)\nBox.viaprop getter: why(${this}['cost'])\n");
     born(&h, "Box:a", json!({}));
     let w = h.get("Box:a", "why");
     let s = w.as_str().unwrap_or_else(|| panic!("why(missing) is {w}, the help says the reason `absent`"));
@@ -134,7 +134,7 @@ fn a_write_of_the_value_a_property_holds_runs_no_setter_and_a_new_value_does() {
 
 #[test]
 fn a_missing_entity_is_a_null_that_says_it_does_not_exist_and_a_missing_property_on_a_real_one_still_names_the_property() {
-    let h = host("PACK sem 1\nBox.ent getter: why(prop('Box:zzz', 'total'))\nBox.lit getter: why(Box:zzz.total)\nBox.real getter: why(prop('Box:b', 'total'))\nBox.alt getter: prop('Box:zzz', 'total') or 5\nBox.isnone getter: prop('Box:zzz', 'total') == None\n");
+    let h = host("PACK sem 1\nBox.ent getter: why(${'Box:zzz'}['total'])\nBox.lit getter: why(Box:zzz.total)\nBox.real getter: why(${'Box:b'}['total'])\nBox.alt getter: ${'Box:zzz'}['total'] or 5\nBox.isnone getter: ${'Box:zzz'}['total'] == None\n");
     born(&h, "Box:b", json!({}));
     born(&h, "Box:a", json!({}));
     assert_eq!(h.get("Box:a", "ent"), json!("absent: Box:zzz does not exist"));

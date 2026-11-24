@@ -25,8 +25,8 @@ fn strings() {
 #[test]
 fn sort_by_orders_rows_by_a_key() {
     let e = json!({"r": [{"n": "a", "ts": 2}, {"n": "b", "ts": 9}, {"n": "c", "ts": null}, {"n": "d", "ts": 5}]});
-    assert_eq!(ev("[prop(x, 'n') for x in sort_by(r, 'ts', True)]", e.clone()), json!(["b", "d", "a", "c"]));
-    assert_eq!(ev("[prop(x, 'n') for x in sort_by(r, 'ts', False)]", e), json!(["c", "a", "d", "b"]));
+    assert_eq!(ev("[x['n'] for x in sort_by(r, 'ts', True)]", e.clone()), json!(["b", "d", "a", "c"]));
+    assert_eq!(ev("[x['n'] for x in sort_by(r, 'ts', False)]", e), json!(["c", "a", "d", "b"]));
 }
 
 #[test]
@@ -44,8 +44,8 @@ fn localtime_gives_the_local_calendar() {
     for k in ["year", "month", "day", "hour", "minute", "date", "clock", "zone", "day_number"] {
         assert!(lt.get(k).is_some(), "{k}: {lt}");
     }
-    let a = ev("prop(localtime(1800000000), 'day_number')", json!({}));
-    let b = ev("prop(localtime(1800000000 + 86400), 'day_number')", json!({}));
+    let a = ev("localtime(1800000000)['day_number']", json!({}));
+    let b = ev("localtime(1800000000 + 86400)['day_number']", json!({}));
     assert_eq!(b.as_i64().unwrap() - a.as_i64().unwrap(), 1);
     let _ = expr::py_str(&expr::V::None);
 }

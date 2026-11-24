@@ -396,8 +396,8 @@ pub const RESERVED: &[&str] = &[
     "Int", "Float", "Num", "Text", "Bool", "List", "Dict", "Error", "None", "True", "False", "this", "x", "clock",
     "dot", "norm", "distance", "unit", "abs", "min", "max", "len", "lower", "strip", "replace", "startswith", "lines", "words", "spans",
     "join", "head", "tail", "sort_by", "unspeak", "before", "after", "pluck", "distinct", "group_by", "concat", "fit", "clip", "ago",
-    "plain", "num", "epoch", "localtime", "json", "str", "referencing", "prop", "why",
-    "instances", "jsonl", "listdir", "read", "sql", "stat", "recall", "rerank", "pronoun", "near", "vsum", "fold", "log", "vmean", "props", "keys", "meta",
+    "plain", "num", "epoch", "localtime", "json", "str", "referencing", "why",
+    "instances", "jsonl", "listdir", "read", "sql", "stat", "recall", "rerank", "pronoun", "near", "vsum", "fold", "log", "vmean", "keys", "meta",
     "it", "that", "they", "them", "these", "those", "he", "him", "she", "her",
     "and", "or", "not", "in", "is", "if", "else", "lambda", "for", "await", "yield",
 ];
@@ -1018,7 +1018,7 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
             if acc.iter().any(|x| !x.is_finite()) { return Err("vsum: not a finite number (an f32 overflowed)".into()); }
             Ok(floats(acc.into_iter().map(|x| x as f64).collect()))
         }
-        // vmean(ids) (#1143, operator 2026-11-15): the mean of the unit vectors `v` of a list of entities, as `vsum([unit(prop(e, 'v')) for e in ids]) / n` computes it
+        // vmean(ids) (#1143, operator 2026-11-15): the mean of the unit vectors `v` of a list of entities, as `vsum([unit(${e}['v']) for e in ids]) / n` computes it
         // (the unit in f64, the sum in f32 in list order, the division in f64), read one vector at a time; an id with no vector and a null id are skipped
         "vmean" => {
             argn(1)?;
@@ -1044,41 +1044,6 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
             if n == 0 { return Ok(V::nil(format!("empty: none of the {} ids has a vector (v)", ids.len()))); }
             if acc.iter().any(|x| !x.is_finite()) { return Err("vmean: not a finite number (an f32 overflowed)".into()); }
             Ok(floats(acc.into_iter().map(|s| s as f64 / n as f64).collect()))
-        }
-        // props(ids, 'name') / props(ids, at, 'name') (#1143, operator 2026-11-15): one property of every entity of a list, as `[prop(e, 'name') for e in ids]`;
-        // with `at`, the at[i]-th element of the i-th value, as `[prop(e, 'name')[k] ...]` (a list by index, a dict by key; a miss is a null)
-        "props" => {
-            if a.len() < 2 || a.len() > 3 { return Err("props(ids, 'name') or props(ids, at, 'name'): 2 or 3 arguments".into()); }
-            let V::List(ids) = &a[0] else { return Err(format!("props(ids, 'name'): ids is a list of entities, got a {}", kind_of(&a[0]))) };
-            let V::Str(name) = &a[a.len() - 1] else { return Err("props(ids, 'name'): the name is a text (the last argument)".into()) };
-            if name.starts_with('_') { return Err(format!("no attribute {:?}", name)); }
-            let at: Option<&Vec<V>> = match a.len() {
-                3 => match &a[1] {
-                    V::List(l) if l.len() == ids.len() => Some(l),
-                    V::List(l) => return Err(format!("props(ids, at, 'name'): {} ids and {} indexes (one index per id)", ids.len(), l.len())),
-                    v => return Err(format!("props(ids, at, 'name'): at is a list of indexes, got a {}", kind_of(v))),
-                },
-                _ => None,
-            };
-            let mut out = Vec::with_capacity(ids.len());
-            for (i, x) in ids.iter().enumerate() {
-                let v = match x {
-                    V::Ent(e) | V::Str(e) => w.attr(e, name),
-                    V::Dict(d) => d.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone()).unwrap_or(V::None),
-                    V::None | V::Nil(_) => x.clone(),
-                    v => return Err(format!("props: item {i} is a {}, not an entity", kind_of(v))),
-                };
-                out.push(match at {
-                    None => v,
-                    Some(at) => match (&v, &at[i]) {
-                        (_, V::List(_) | V::Dict(_) | V::Float(_) | V::Bool(_)) => return Err(format!("props: index {i} is a {}, not an index (a whole number or a key)", kind_of(&at[i]))),
-                        (V::Error(_), _) => v,
-                        (_, k) if nullish(k) => V::None,
-                        _ => index_value(v, at[i].clone(), w).map_err(|e| format!("props: item {i}: {e}"))?,
-                    },
-                });
-            }
-            Ok(V::List(out))
         }
         // fold(init, [step for x in xs if keep]) is evaluated by `ev_fold` (its step is not evaluated before the call); reaching here means a wrong shape
         "fold" => Err(FOLD_USE.into()),
@@ -1320,16 +1285,6 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
             argn(2)?;
             let e = match &a[0] { V::Ent(e) | V::Str(e) => e.clone(), _ => return Ok(V::List(vec![])) };
             Ok(V::List(w.refs(&e, &py_str(&a[1])).into_iter().map(V::Ent).collect()))
-        }
-        "prop" => {
-            argn(2)?;
-            match &a[0] {
-                V::Ent(e) => { let name = py_str(&a[1]); if name.starts_with('_') { return Err(format!("no attribute {:?}", name)); } Ok(w.attr(e, &name)) }
-                V::Dict(d) => { let name = py_str(&a[1]); Ok(d.iter().find(|(k, _)| *k == name).map(|(_, v)| v.clone()).unwrap_or(V::None)) }
-                // an entity's id (a reference stored as a string): its field, read like `x.name`
-                V::Str(id) => { let name = py_str(&a[1]); if name.starts_with('_') { return Err(format!("no attribute {:?}", name)); } Ok(w.attr(id, &name)) }
-                _ => Ok(V::None),
-            }
         }
         _ => match w.host(f, &a) { Some(r) => r, None => Err("only the built-ins may be called".into()) },
     }

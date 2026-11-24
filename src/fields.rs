@@ -126,7 +126,7 @@ const CLOCK: &str = "\u{0}clock";
 /// keeps the level it reached (its closing edge reads the previous value, rule 8).
 ///
 /// Which getters a read lands on is class-aware (the same expression types `infer.rs` uses): `this.n` reads `n` of THIS getter's
-/// class; `x.n` / `g.n` / `prop(x, 'n')` read `n` of x's class when it is known (`this`, a loop variable over `instances('X')`
+/// class; `x.n` / `g.n` / `${x}['n']` read `n` of x's class when it is known (`this`, a loop variable over `instances('X')`
 /// or over a getter of known element type, a constructor, an entity literal). Where the class is unknown the read is
 /// conservative (every getter of that name), but such an edge is dropped when it would close a cycle that the known edges do
 /// not: a name collision between unrelated classes can never order a getter after what depends on it. Strings in dict
@@ -217,7 +217,7 @@ pub fn levels_by_name(gs: &[Getter]) -> Vec<usize> {
 }
 
 /// The expression with its data strings blanked: a dict key or a list element that happens to be a getter's name is not a read of
-/// it. A string that is the LAST argument of a call (`prop(row, 'name')`) names a field: it stays.
+/// it. A string that is the LAST argument of a call (`${row}['name']`) names a field: it stays.
 fn code_only(expr: &str) -> String {
     let c: Vec<char> = expr.chars().collect();
     let mut out = String::with_capacity(expr.len());
@@ -230,7 +230,7 @@ fn code_only(expr: &str) -> String {
             let end = j.min(c.len() - 1);
             let prev = out.chars().rev().find(|x| !x.is_whitespace());
             let next = c[end + 1..].iter().find(|x| !x.is_whitespace());
-            if prev == Some(',') && next == Some(&')') { out.extend(&c[i..=end]); }     // prop(x, 'name'): a read by name
+            if prev == Some(',') && next == Some(&')') { out.extend(&c[i..=end]); }     // ${x}['name']: a read by name
             else { out.push(' '); for _ in i..=end { out.push(' '); } }
             i = end + 1;
         } else { out.push(c[i]); i += 1; }

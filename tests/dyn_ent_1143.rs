@@ -41,3 +41,9 @@ fn only_a_text_names_an_entity_and_a_dollar_alone_is_not_an_expression() {
     assert!(run("$x").is_err());
     assert_eq!(ok("'${t}'"), json!("${t}"), "inside quotes it is text, as always");
 }
+
+#[test]
+fn prop_and_props_are_not_builtins_any_more() {
+    assert!(run("prop('Command:x', 'status')").unwrap_err().contains("built-ins"), "`${{id}}[name]` reads it now");
+    assert!(run("props(['Command:x'], 'status')").unwrap_err().contains("built-ins"));
+}

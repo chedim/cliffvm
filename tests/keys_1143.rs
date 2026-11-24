@@ -30,15 +30,15 @@ fn the_keys_of_a_dict_come_in_the_order_it_holds_them() {
 
 #[test]
 fn it_reads_a_dict_held_by_an_entity_and_composes_with_the_other_builtins() {
-    assert_eq!(ok("keys(prop('A:1', 'd'))"), json!(["k", "j"]));
-    assert_eq!(ok("len(keys(prop('A:1', 'd')))"), json!(2));
-    assert_eq!(ok("[prop('A:1', 'd')[k] for k in keys(prop('A:1', 'd'))]"), json!(["one", 2]));
+    assert_eq!(ok("keys(${'A:1'}['d'])"), json!(["k", "j"]));
+    assert_eq!(ok("len(keys(${'A:1'}['d']))"), json!(2));
+    assert_eq!(ok("[${'A:1'}['d'][k] for k in keys(${'A:1'}['d'])]"), json!(["one", 2]));
     assert_eq!(ok("sort_by([{'k': k} for k in keys({'b': 1, 'a': 2})], 'k')"), json!([{"k": "a"}, {"k": "b"}]));
 }
 
 #[test]
 fn a_read_that_has_not_arrived_is_an_empty_list_and_anything_else_is_an_error() {
-    assert_eq!(ok("keys(prop('A:9', 'd'))"), json!([]), "an absent property is a pending read: nothing to list");
+    assert_eq!(ok("keys(${'A:9'}['d'])"), json!([]), "an absent property is a pending read: nothing to list");
     assert!(err("keys([1, 2])").contains("keys"), "a list has no keys");
     assert!(err("keys('text')").contains("keys"), "a text has no keys (an entity's names are `meta`)");
     assert!(err("keys(1)").contains("keys"), "a number has no keys");
