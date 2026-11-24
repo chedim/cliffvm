@@ -346,7 +346,8 @@ pub fn infer_expr(n: &Node, env: &Env) -> Ty {
         }
         Node::Call(f, args) => call_ty(f, args, env),
         Node::Ctor(c, args) => { for (_, a) in args { infer_expr(a, env); } Ty::entity(c) }
-        Node::Dyn(e) => { infer_expr(e, env); Ty::any() }   // an id that is data: its class is not known
+        // an entity stays what it is, a text that names one is an entity whose class is not known
+        Node::Dyn(e) => { let t = infer_expr(e, env); if !t.any && !t.kinds.is_empty() && t.kinds.iter().all(|k| matches!(k, Kind::Entity(_))) { t } else { Ty::any() } }
         Node::Ent(parts) => {
             // the class is the first segment after a namespace; a key that may be null (or is not an int or text) makes the id null, or an Error
             let (mut nullable, mut err) = (false, false);
@@ -695,6 +696,7 @@ fn walk_reads(n: &Node, env: &Env, out: &mut Vec<Read>) {
             if let Some(k) = const_str(i) {
                 let t = infer_expr(b, env);
                 if !t.any && t.kinds.iter().any(|x| matches!(x, Kind::Entity(c) if c != "*")) { read_on(&t, k, out); }
+                else if matches!(&**b, Node::Dyn(_)) { read_on(&t, k, out); }   // `${id}['n']` names a field of an entity whose class is not known: ordered after every getter of that name, as `prop(id, 'n')` was
             }
         }
         Node::Bin(_, a, b) => { walk_reads(a, env, out); walk_reads(b, env, out); }

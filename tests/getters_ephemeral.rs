@@ -99,3 +99,26 @@ fn a_getter_that_reads_a_getter_of_another_entity_is_computed_after_it_not_befor
     assert_eq!(h.get("Req:r", "out"), json!("ok"), "converged");
     assert_eq!(h.get("Req:r", "seen"), json!("ok"), "and the first value anyone saw was the right one: the dependency was computed first");
 }
+
+const READER: &str = "PACK rd 1
+Box.view getter: this.n * 2
+Reader.out getter: ${this.target}['view']
+";
+
+#[test]
+fn a_getter_that_reads_a_getter_of_a_stored_entity_gets_its_value_after_a_restart() {
+    let f = tmpfile("reader");
+    {
+        let mut o = Options::new(Some(f.clone())); o.effects = false;
+        let h = Host::open(o).unwrap();
+        h.load_pack("rd", READER).unwrap(); h.rebuild();
+        h.born("Box:a", "Box", props(json!({"n": 21})), "person");
+        h.born("Reader:r", "Reader", props(json!({"target": "Box:a"})), "person");
+        assert_eq!(h.get("Reader:r", "out"), json!(42));
+    }
+    let mut o = Options::new(Some(f.clone())); o.effects = false;
+    let h = Host::open(o).unwrap();
+    h.load_pack("rd", READER).unwrap(); h.rebuild();
+    h.load_stored_entities();
+    assert_eq!(h.get("Reader:r", "out"), json!(42), "the stored Box has no getter value in its row: the reader still gets it, computed when it was wanted");
+}
