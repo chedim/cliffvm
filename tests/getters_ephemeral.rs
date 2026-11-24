@@ -52,3 +52,28 @@ fn a_getter_that_follows_a_change_is_still_right_and_a_restart_computes_it_again
     assert_eq!(h.get("Thing:t1", "twice"), json!(10), "computed again from the restored inputs");
     assert!(h.rows()["Thing:t1"]["props"].get("twice").is_none(), "and still not stored");
 }
+
+const LAZY: &str = "PACK lz 1
+Box.kind getter: 'box'
+Box.go on-setter hit:
+  WHEN this.kind == 'box':
+    this.hit = 1
+";
+
+#[test]
+fn a_setter_on_a_row_that_is_loaded_by_the_write_finds_the_getters_it_reads_computed() {
+    let f = tmpfile("lazy");
+    {
+        let mut o = Options::new(Some(f.clone())); o.effects = false;
+        let h = Host::open(o).unwrap();
+        h.load_pack("lz", LAZY).unwrap(); h.rebuild();
+        h.born("Box:a", "Box", props(json!({"n": 1})), "person");
+    }
+    let mut o = Options::new(Some(f.clone())); o.effects = false;
+    let h = Host::open(o).unwrap();
+    h.load_pack("lz", LAZY).unwrap(); h.rebuild();
+    h.load_stored_entities();   // a lazy class: the row is only noted, the write below loads it
+    assert!(h.rows()["Box:a"]["props"].get("kind").is_none(), "the getter's value is not in the row");
+    h.write("Box:a", "go", json!(1), "person");
+    assert_eq!(h.get("Box:a", "hit"), json!(1), "the setter read `this.kind`, which was computed before the setter ran");
+}

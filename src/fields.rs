@@ -1532,9 +1532,27 @@ impl Fields {
         for p in keys { self.mark(&e, &p); }
     }
 
+    /// Computes the getters of `eid` that are dirty, lowest level first, as the settle loop would later, and says what they got (what they write is heard as any write).
+    fn compute_dirty_of(&mut self, core: &mut Core, host: &dyn Host, work: &mut VecDeque<Write>, eid: &str, now: f64, seq: &mut i64) {
+        let mine: Vec<(usize, String, usize)> = self.dirty.iter().filter(|(_, e, _)| e == eid).cloned().collect();
+        for key in mine {
+            self.dirty.remove(&key);
+            let (_, e, gi) = key;
+            if !core.docs.get(&e).map_or(false, |d| class_rank(core, &e, d, &self.getters[gi].cls).is_some()) { continue; }
+            let v = self.compute(core, Some(host), &e, gi, now, seq);
+            work.extend(std::mem::take(&mut self.late));
+            let Some(v) = v else { continue };
+            let prop = self.getters[gi].prop.clone();
+            self.emit_unchecked(core, work, &e, &prop, v, &format!("getter:{}", prop), seq, now);
+        }
+    }
+
     fn step(&mut self, core: &mut Core, host: &dyn Host, work: &mut VecDeque<Write>, w: Write, now: f64, seq: &mut i64) {
         // a write that lands on a REPLICA only wakes what reads it: no setter, no driver, no learner (docs/graph-link.md, section 2)
         if core.is_replica(&w.eid) { self.mark(&w.eid, &w.prop); self.mark_refs(&w.prop, &w.old, &w.new); return; }
+        // A getter is computed when it is wanted (operator 2026-11-24): the setters of this write read the entity's getters, and a getter of an entity that has no value yet (a stored
+        // entity this write loaded: its row holds no getter value) is dirty. Those are computed first, so a setter never reads a getter that is only waiting for its turn in the queue.
+        self.compute_dirty_of(core, host, work, &w.eid, now, seq);
         self.driver_effect(core, work, &w, now, seq);
         self.mark(&w.eid, &w.prop);
         if w.prop == crate::vm::VECTOR_PROP { if let Some(c) = core.docs.get(&w.eid).map(|e| e.cls.clone()).filter(|c| core.is_mapped(c)) { self.mark_key(&(crate::vm::VECTORS_READ.to_string(), c)); } }
