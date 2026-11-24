@@ -12,6 +12,7 @@ fn world() -> W {
     let mut m = HashMap::new();
     m.insert(("Command:x".to_string(), "status".to_string()), V::Str("ok".into()));
     m.insert(("Command:x".to_string(), "rc".to_string()), V::Int(0));
+    m.insert(("Command:y".to_string(), "status".to_string()), V::Str("bad".into()));
     W(m)
 }
 fn run(src: &str) -> Result<V, String> {
@@ -38,7 +39,8 @@ fn a_property_the_entity_lacks_is_a_null_and_a_null_id_is_a_null() {
 #[test]
 fn only_a_text_names_an_entity_and_a_dollar_alone_is_not_an_expression() {
     assert!(ok("${n}['x']").is_null(), "a number names no entity: a null, as the removed prop(3, 'x') read it");
-    assert!(ok("${[1]}['x']").is_null() && ok("${True}['x']").is_null(), "so do a list and a bool");
+    assert!(ok("${True}['x']").is_null(), "so does a bool");
+    assert!(run("${[1]}['x']").unwrap_err().contains("item 0"), "a list is a list of ids: an item that is no id is named");
     assert!(run("$x").is_err());
     assert_eq!(ok("'${t}'"), json!("${t}"), "inside quotes it is text, as always");
 }
@@ -53,4 +55,37 @@ fn prop_and_props_are_not_builtins_any_more() {
 fn a_dict_in_braces_stays_the_dict_so_the_rewrite_of_a_dict_read_is_one_to_one() {
     assert_eq!(ok("${{'a': 1}}['a']"), json!(1), "prop(d, 'a') on a dict read its key");
     assert_eq!(ok("[${r}['a'] for r in [{'a': 1}, {'a': 2}]]"), json!([1, 2]));
+}
+
+// ---- a list of ids: `${ids}[name]` is one property of every entity, in one step (what `props(ids, name)` was) -----------------------------------------------------------
+
+#[test]
+fn a_list_of_ids_in_braces_reads_one_property_of_every_entity() {
+    assert_eq!(ok("${['Command:x', 'Command:y']}['status']"), json!(["ok", "bad"]));
+    assert_eq!(ok("${['Command:x', 'Command:y']}.status"), json!(["ok", "bad"]), ".name does the same");
+    assert_eq!(ok("${[]}['status']"), json!([]));
+    assert_eq!(ok("${[{'status': 'd'}]}['status']"), json!(["d"]), "a dict item reads its key, as the removed props did");
+}
+
+#[test]
+fn a_null_item_stays_a_null_and_a_property_an_entity_lacks_is_its_reasoned_null() {
+    let v = run("${['Command:x', None, 'Command:y']}['rc']").unwrap();
+    match v { V::List(l) => { assert_eq!(l.len(), 3); assert!(matches!(l[0], V::Int(0))); assert!(matches!(l[1], V::None)); assert!(matches!(l[2], V::Nil(_)), "absent: {:?}", l[2]); } other => panic!("{other:?}") }
+}
+
+#[test]
+fn an_item_that_is_no_entity_is_an_error_that_names_it_and_a_hidden_name_is_refused() {
+    assert!(run("${['Command:x', 3]}['status']").unwrap_err().contains("item 1"));
+    assert!(run("${['Command:x']}['_hidden']").unwrap_err().contains("_hidden"));
+}
+
+#[test]
+fn it_is_one_step_however_many_ids() {
+    let ids: J = J::Array((0..5000).map(|i| json!(format!("Command:{}", if i % 2 == 0 { "x" } else { "y" }))).collect());
+    let n = expr::parse("${ids}['status']").unwrap();
+    let env: HashMap<String, V> = [("ids".to_string(), expr::from_json(&ids))].into_iter().collect();
+    expr::set_eval_budget(Some(8));
+    let r = expr::eval(&n, &env, &world());
+    expr::set_eval_budget(None);
+    match r { Ok(V::List(l)) => assert_eq!(l.len(), 5000), other => panic!("under a budget of 8 steps: {other:?}") }
 }

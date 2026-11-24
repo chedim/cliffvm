@@ -1401,6 +1401,19 @@ fn ev_node(n: &Node, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> 
         Node::Dyn(e) => match ev(e, env, w, m)? {
             V::Str(id) if !id.is_empty() => Ok(V::Ent(id)),
             v @ (V::Ent(_) | V::Dict(_)) => Ok(v),   // a dict stays a dict (`${d}['k']` is its key, as the removed `prop(d, 'k')` read it)
+            // a list of ids: the list of those entities, so `[name]` after it reads that property of every one (`index_value`: one step however long the list)
+            V::List(items) => {
+                let mut out = Vec::with_capacity(items.len());
+                for (i, x) in items.into_iter().enumerate() {
+                    out.push(match x {
+                        V::Str(id) if !id.is_empty() => V::Ent(id),
+                        v @ (V::Ent(_) | V::Dict(_) | V::None | V::Nil(_)) => v,
+                        e @ V::Error(_) => return Ok(e),
+                        v => return Err(format!("${{...}}: item {i} is a {}, not an entity id", kind_of(&v))),
+                    });
+                }
+                Ok(V::List(out))
+            }
             v @ (V::None | V::Nil(_) | V::Error(_)) => Ok(v),
             _ => Ok(V::None),   // a number, a bool or a list names no entity: a null, as the removed `prop(x, 'k')` read it
         },
@@ -1428,6 +1441,8 @@ fn ev_seq(n: &Node, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> {
 fn ev_attr(b: &Node, a: &String, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> {
     match ev(b, env, w, m)? {
         V::Ent(e) => { if a.starts_with('_') { return Err(format!("no attribute {:?}", a)); } Ok(w.attr(&e, a)) }
+        // the entities of a list (`${ids}.name`): that property of each, as `${ids}[name]`
+        l @ V::List(_) => index_value(l, V::Str(a.clone()), w),
         V::Nil(r) => Ok(V::Nil(r)),
         e @ V::Error(_) => Ok(e),
         V::None => Ok(V::absent(format!(".{} of an absent value", a))),
@@ -1516,6 +1531,15 @@ fn index_value(base: V, idx: V, w: &dyn World) -> Result<V, Err> {
                     Ok(if at >= 0 && at < n { l[at as usize].clone() } else { V::None })
                 }
                 (V::Dict(d), V::Str(k)) => Ok(d.iter().find(|(x, _)| *x == k).map(|(_, v)| v.clone()).unwrap_or(V::None)),
+                // a list of entities (what `${ids}` makes) indexed by a name: that property of each, in one step
+                (V::List(l), V::Str(k)) if l.iter().all(|x| matches!(x, V::Ent(_) | V::Dict(_) | V::None | V::Nil(_))) => {
+                    if k.starts_with('_') { return Err(format!("no attribute {:?}", k)); }
+                    Ok(V::List(l.iter().map(|x| match x {
+                        V::Ent(e) => w.attr(e, &k),
+                        V::Dict(d) => d.iter().find(|(x, _)| *x == k).map(|(_, v)| v.clone()).unwrap_or(V::None),
+                        v => v.clone(),
+                    }).collect()))
+                }
                 (V::Ent(e), V::Str(k)) => { if k.starts_with('_') { return Err(format!("no attribute {:?}", k)); } Ok(w.attr(&e, &k)) }
                 (b, i) => Err(format!("cannot index a {} by a {}", kind_of(&b), kind_of(&i))),
             }
