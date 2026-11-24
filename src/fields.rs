@@ -2,7 +2,7 @@
 //! A field is a getter (a value that is a pure function of the field) or an on-setter (WHEN the
 //! prop is written and a condition holds, write other props). Counting is a computed getter
 //! (`open_blockers`), not decrement-on-event: idempotent and replay-safe. The getter's value is
-//! materialised onto the entity (written when it changes), so the whole-field checksum sees it.
+//! held on the entity in memory (never stored: operator 2026-11-24, a row holds what was written and a restore computes the getters again).
 //! OFF by default: nothing in lib.rs or the seat wires this in; the parity gate builds it.
 use std::collections::VecDeque;
 

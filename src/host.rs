@@ -1115,6 +1115,9 @@ impl Host {
         let known = self.eng().0.docs.get(eid).map(|e| e.cls.clone());
         let ts = self.stamp_ts();
         if self.storage_of(known.as_deref().or(cls).unwrap_or("")) == crate::fields::Storage::Virtual { self.eng().0.updated.insert(eid.to_string(), ts); return; }   // RAM only: no row, but it has its `updated`
+        // A GETTER's value is ephemeral (operator 2026-11-24): the engine holds it in memory, the row never does (a restore computes it again, `restore_props`). A row an older seat
+        // stored with one has it dropped here, the next time the row is written.
+        if is_getter_write(stamp) { self.drop_stored_getter(eid, prop); self.eng().0.updated.insert(eid.to_string(), ts); return; }
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         self.load(&db, eid);
         let mut g = self.pending.lock().unwrap_or_else(|e| e.into_inner());
@@ -1135,6 +1138,16 @@ impl Host {
         slot.updated = ts;
         drop(g); drop(db);   // the engine's lock is never taken under the store's (the loader takes the store's under the engine's)
         self.eng().0.updated.insert(eid.to_string(), ts);
+    }
+
+    /// Takes `prop` out of the stored row of `eid` when an older seat stored it as a getter's value (its writer is a getter's); a row that has no such property is left alone.
+    fn drop_stored_getter(&self, eid: &str, prop: &str) {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        self.load(&db, eid);
+        let mut g = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(slot) = g.as_mut().and_then(|m| m.get_mut(eid)) else { return };
+        let Some((_, p, w)) = slot.row.as_mut() else { return };
+        if w.get(prop).and_then(|x| x.as_str()).map_or(false, is_getter_write) { p.remove(prop); w.remove(prop); slot.dirty = true; }
     }
 
     /// Every stored row: eid -> {cls, props, writers}.
