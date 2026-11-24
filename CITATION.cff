@@ -17,6 +17,21 @@ identifiers:
   - type: doi
     value: "10.5281/zenodo.24353554"
     description: "Version DOI of 0.2.2"
+  - type: doi
+    value: "10.5281/zenodo.24357381"
+    description: "Version DOI of 0.3.0"
+  - type: doi
+    value: "10.5281/zenodo.24378319"
+    description: "Version DOI of 0.3.1"
+  - type: doi
+    value: "10.5281/zenodo.24382500"
+    description: "Version DOI of 0.3.2"
+  - type: doi
+    value: "10.5281/zenodo.24421838"
+    description: "Version DOI of 0.3.3"
+  - type: doi
+    value: "10.5281/zenodo.24429449"
+    description: "Version DOI of 0.3.4"
 license: MIT
 abstract: >-
   cliffvm is the cliffhanger VM: a reactive graph of entities with getters and
@@ -29,5 +44,5 @@ keywords:
   - entity graph
   - memory
   - LLM
-version: "0.3.4"
-date-released: "2026-11-21"
+version: "0.3.5"
+date-released: "2026-11-23"

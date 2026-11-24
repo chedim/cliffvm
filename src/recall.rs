@@ -32,8 +32,8 @@ pub fn defaults() -> Map<String, J> {
     v.as_object().unwrap().clone()
 }
 
-/// the recall-policy pack (native/packs/recall-policy.json, #994 row 7): the dials are data, declared by the pack loader.
-pub fn load_seed(core: &mut Core) { crate::packs::load_named(core, crate::packs::RECALL_POLICY); }
+/// the recall dials (#994 row 7): declared into the core at open from `defaults()`; the data form of the same pack is tests/fixtures/recall-policy.json, held equal by tests/packs_994.rs.
+pub fn load_seed(core: &mut Core) { core.load(DIALS.into(), CLASS_DIALS.into(), defaults(), None, 0.0); }
 
 fn num(v: &J) -> Option<f64> { v.as_f64() }
 fn count(v: &J, min: i64) -> bool { v.as_i64().map(|n| n >= min).unwrap_or(false) }
