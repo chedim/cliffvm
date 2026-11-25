@@ -1,0 +1,69 @@
+-- `x[i]` in a c1f expression (the operator, 2026-11-12): a list by position (negative from the end), a dict by key, an entity by property name. A miss is None, never an error;
+-- a base that is None stays None. No slices. Also `num(x)` and `plain(text)`. Converted from tests/subscript.rs.
+
+test a list by position and from the end
+let xs = [10, 20, 30]
+eval xs[0] = 10
+eval xs[2] = 30
+eval xs[-1] = 30
+eval xs[-3] = 10
+
+test a miss is none, not an error
+let xs = [10, 20, 30]
+let d = {'a': 1, 'b': ['x']}
+let n = None
+eval xs[3] == None = true
+eval xs[-4] == None = true
+eval d['zz'] == None = true
+eval n[0] == None = true
+eval [][0] == None = true
+
+test a dict by key and it chains
+let xs = [10, 20, 30]
+let d = {'a': 1, 'b': ['x']}
+eval d['a'] = 1
+eval d['b'][0] = "x"
+eval xs[xs[0] - 10] = 10
+
+test an entity by property name
+given Thing:a {"name": "name of Thing:a"}
+let e = ${'Thing:a'}
+eval e['name'] = "name of Thing:a"
+eval e['_private'] = error: _private
+
+test slices and wrong index types are refused
+let xs = [10, 20, 30]
+let d = {'a': 1}
+eval xs[0:2] = error: slice
+eval xs['a'] = error: index
+eval d[0] = error: index
+eval 5[0] = error: index
+
+test it composes with the rest
+let xs = [10, 20, 30]
+eval xs[0] + xs[1] + len(xs) = 33
+eval [x for x in xs][1] = 20
+
+test num parses what is a number and misses the rest
+let n = None
+eval num(12) = 12
+eval num(' 12 ') = 12
+eval num('2.5') = 2.5
+eval num('1e3') = 1000.0
+eval num('abc') == None = true
+eval num('') == None = true
+eval num(True) == None = true
+eval num('nan') == None = true
+eval num('inf') == None = true
+eval num(n) == None = true
+eval num([1]) == None = true
+eval num('7') + num(3) = 10
+
+test plain lowercases and drops punctuation but keeps the marks of names and paths
+let n = None
+eval plain('  Yes,  GO ahead!! ') = "yes go ahead"
+eval plain('use #1131 in src/a.py: now-ok') = "use #1131 in src/a.py: now-ok"
+eval plain('(a) [b] {c} "d" e_f') = "a b c d e_f"
+eval plain('') = ""
+eval plain(n) = ""
+eval plain('ÄÖ ünï') = "äö ünï"

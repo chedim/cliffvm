@@ -1,0 +1,7 @@
+PACK bt 1
+Reader.one getter: ${this.target}['n']
+Reader.lit getter: ${'Thing:t1'}['n']
+Reader.kind getter: ${this.target}['cls']
+Reader.props getter: meta(this.target)['properties']
+Reader.gone getter: ${'Thing:nope'}['n'] == None and (why(${'Thing:nope'}['n']) is Absent)
+Reader.many getter: ${this.targets}['n']
