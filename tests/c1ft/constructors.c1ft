@@ -1,0 +1,168 @@
+-- Constructors (operator, 2026-11-12): `<entity> = Class(name: value, ...)`. The TARGET on the left is the entity's identity (no `key` argument, no declared identity). It creates the entity at that eid
+-- by the creation path of a write (the class must be one the pack owns or imports; refused otherwise, as a receipt, never a crash), sets the named arguments as its first properties, and is idempotent:
+-- an entity that exists is not created again and a property that already has a value is not overwritten. A target whose eid prefix is not the class (`membrane::Config:...` built as `Voice(...)`) is
+-- stamped `parents: ['cls:voice']`, the ISA kind-mirror, so the engine mirrors it by kind. Converted from tests/constructors_1143.rs; what stays Rust there is what looks at the engine's own
+-- birth events and refusals lists, the print/parse round trip and the static type.
+-- Each test writes `Box:a.go` twice: the second write of the same value changes nothing, a second `go` is a fresh trigger.
+
+test a constructor creates the target with its arguments as properties
+PACK t 1
+Thing.shown getter: this.eid
+Reply.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:t1 = Thing(kind: 'in', n: this.n + 1)
+given Box:a {"n": 4}
+write Box:a.go = 1
+write Box:a.go = 2
+eval Thing:t1.cls = "Thing"
+reads Thing:t1.kind = "in"
+reads Thing:t1.n = 5
+-- the prefix is the class: no kind stamp
+reads Thing:t1.parents = null
+
+test the target is the identity a key in brackets names it
+PACK t 1
+Thing.shown getter: this.eid
+Reply.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:slot[this.slug] = Thing(kind: 'x')
+    Reply:r[this.n]:part = Reply(text: 'hi')
+given Box:a {"slug": "ann-b", "n": 3}
+write Box:a.go = 1
+write Box:a.go = 2
+reads Thing:slot:ann-b.kind = "x"
+reads Reply:r:3:part.text = "hi"
+
+test a foreign prefix is stamped with the kind so the engine mirrors it
+PACK t 1
+Thing.shown getter: this.eid
+Reply.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    membrane::Config:voice:in[this.slug] = Thing(kind: 'in')
+    membrane::Chat:message[this.n]:response = Reply(text: 'hi')
+given Box:a {"slug": "ann-b", "n": 9}
+write Box:a.go = 1
+write Box:a.go = 2
+reads membrane::Config:voice:in:ann-b.kind = "in"
+-- the eid class first (the birth default), then the stamp
+reads membrane::Config:voice:in:ann-b.parents = ["cls:config", "cls:thing"]
+-- it stays the class its eid names (the Python seat's)
+eval ${'membrane::Config:voice:in:ann-b'}['cls'] = "Config"
+reads membrane::Chat:message:9:response.parents = ["cls:chat", "cls:reply"]
+reads membrane::Chat:message:9:response.text = "hi"
+
+test a constructor is idempotent and never overwrites a value
+PACK t 1
+Thing.shown getter: this.eid
+Reply.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:t1 = Thing(kind: 'new', n: 1, note: None)
+given Box:a {}
+given Thing:t1 {"kind": "old", "n": null}
+write Box:a.go = 1
+write Box:a.go = 2
+-- a property that has a value stays
+reads Thing:t1.kind = "old"
+-- an unset one is filled
+reads Thing:t1.n = 1
+-- a null argument sets nothing
+reads Thing:t1.note = null
+
+test a foreign entity that exists keeps what it has and gains only what is unset
+PACK t 1
+Thing.shown getter: this.eid
+Reply.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    membrane::Config:voice:in:z = Thing(kind: 'in', person: 'Z')
+given Box:a {}
+given membrane::Config:voice:in:z {"person": "Zed", "parents": ["cls:thing"]}
+write Box:a.go = 1
+write Box:a.go = 2
+reads membrane::Config:voice:in:z.person = "Zed"
+reads membrane::Config:voice:in:z.kind = "in"
+-- the birth default put the eid class first; the constructor added nothing to the list the entity was given
+reads membrane::Config:voice:in:z.parents = ["cls:config", "cls:thing"]
+
+test a class the pack does not own or import is refused with a reason
+PACK t 1
+Thing.shown getter: this.eid
+Reply.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:t1 = Nope(kind: 'in')
+    Thing:t2 = Goal(kind: 'in')
+    Thing:t3 = Thing(kind: 'ok')
+given Box:a {}
+write Box:a.go = 1
+write Box:a.go = 2
+-- no pack owns Nope
+absent Thing:t1
+-- goalgraph owns Goal and this pack does not import it
+absent Thing:t2
+-- the line below still runs
+reads Thing:t3.kind = "ok"
+
+test a null or bad key creates nothing
+PACK t 1
+Thing.shown getter: this.eid
+Reply.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:k[this.missing] = Thing(kind: 'x')
+    Thing:k[this.f] = Thing(kind: 'x')
+given Box:a {"f": 1.5}
+write Box:a.go = 1
+write Box:a.go = 2
+eval len(instances('Thing')) = 0
+
+test a constructor with positional arguments is refused when the pack loads
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:x = Thing(1, 2)
+error: named
+
+test a constructor with a positional argument after a named one is refused
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:x = Thing(a: 1, 2)
+error: named
+
+test a constructor with a repeated name is refused
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:x = Thing(a: 1, a: 2)
+error: twice
+
+test a constructor outside a write target is a reasoned error not a crash
+PACK t 1
+Thing.shown getter: this.eid
+Box.g getter: Thing(kind: 'x')
+given Box:a {}
+reads Box:a.g = null
+eval 'constructor' in why(Box:a.g) = true
+
+test a foreign prefix entity gets its kinds getters at once
+-- the kind stamp (`parents`) is set after the birth: the kind's getters must still be computed for what was just made
+PACK t 1
+Voice.shown getter: 'v:' + this.eid
+Voice.twice getter: this.n * 2
+Box.go on-setter t:
+  ALWAYS:
+    Config:x = Voice(n: 4)
+given Box:a {}
+write Box:a.go = 1
+write Box:a.go = 2
+reads Config:x.parents = ["cls:config", "cls:voice"]
+reads Config:x.shown = "v:Config:x"
+reads Config:x.twice = 8
