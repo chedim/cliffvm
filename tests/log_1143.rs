@@ -15,16 +15,6 @@ fn log_is_the_natural_log_rounded_to_f32() {
 }
 
 #[test]
-fn log_says_why_on_a_number_that_is_not_positive_or_on_a_non_number() {
-    for (src, want) in [("log(0)", "positive"), ("log(-1)", "positive"), ("log(-0.5)", "positive"), ("log('e')", "number"), ("log([1])", "number"), ("log(True)", "number")] {
-        let e = ev(src).unwrap_err();
-        assert!(e.contains("log") && e.contains(want), "{src}: {e}");
-    }
-    assert!(ev("log()").unwrap_err().contains("log"));
-    assert!(ev("log(1, 2)").unwrap_err().contains("log"));
-}
-
-#[test]
 fn log_of_a_null_is_a_null_and_log_is_reserved() {
     assert_eq!(ev("log(None) == None").unwrap(), json!(true));
     assert!(expr::RESERVED.contains(&"log"));

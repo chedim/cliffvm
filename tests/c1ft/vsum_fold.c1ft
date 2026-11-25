@@ -1,0 +1,46 @@
+-- Converted from tests/vsum_fold_1143.rs; what stays Rust there is what c1ft cannot say (the step budget, the reserved names, the f32 bit patterns).
+
+test vsum adds up a list of vectors
+eval vsum([[1, 2], [3, 4], [5, 6]]) = [9.0, 12.0]
+eval vsum([[1, 2]]) = [1.0, 2.0]
+
+test vsum weighs each vector by its weight
+eval vsum([[1, 0], [0, 1]], [2, 0.5]) = [2.0, 0.5]
+eval vsum([[1, 1], [1, 1]], [1, -1]) = [0.0, 0.0]
+
+test vsum says why on a wrong shape
+eval vsum([[1, 2], [1]]) = error: vsum
+eval vsum([[1, 2], [1]]) = error: dimension
+eval vsum([[1, 2], [3, 4]], [1]) = error: vsum
+eval vsum([[1, 2], [3, 4]], [1]) = error: weight
+eval vsum([[1, 'a']]) = error: vsum
+eval vsum([[1, 2]], ['x']) = error: vsum
+eval vsum([[1, 2]], ['x']) = error: weight
+eval vsum([1, 2]) = error: vsum
+eval vsum([1, 2]) = error: list of vectors
+eval vsum([]) = error: vsum
+eval vsum([]) = error: no vector
+eval vsum() = error: vsum
+
+test fold carries acc across the list
+eval fold(0, [acc + x for x in [1, 2, 3]]) = 6
+eval fold('', [acc + x for x in ['a', 'b']]) = "ab"
+eval fold(7, [acc + x for x in []]) = 7
+eval fold(7, [acc + x for x in None]) = 7
+
+test fold skips what its if refuses and the if sees acc
+eval fold(0, [acc + x for x in [1, 2, 3, 4] if x > 2]) = 7
+eval fold([], [concat(acc, [x]) for x in [1, 2, 3, 2, 1] if not (x in acc)]) = [1, 2, 3]
+
+test fold is greedy a chain keeps its far end
+-- keep x unless it is within 1 of a KEPT one: 1 kept, 2 dropped (near 1), 3 kept (near 2, but 2 was not kept)
+eval fold([], [concat(acc, [x]) for x in [1, 2, 3] if len([k for k in acc if abs(k - x) <= 1]) == 0]) = [1, 3]
+
+test fold sees the locals and names around it
+let base = 2
+let xs = [3, 4]
+eval fold(base, [acc * x for x in xs]) = 24
+
+test fold takes a start and a comprehension
+eval fold(0, [1, 2]) = error: fold(init, [step for x in xs])
+eval fold([acc for x in [1]]) = error: fold(init, [step for x in xs])
