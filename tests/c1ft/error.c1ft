@@ -1,0 +1,182 @@
+-- The c1f `Error` value kind and the `is` operator (#1143, docs/c1f-error.md; operator decisions 2026-11-13). null = not initialised / absent / not applicable (keeps its `why`); Error = a failure,
+-- carries its reason; `x == None` is False for an Error; an Error PROPAGATES; old routes see it as a plain null; the check is `x is Error`. Converted from tests/error_1143.rs.
+-- The Rust test's world had Trip:a (classes Trip, Place), Place:b (Place) and Box:c (Box); here they are three given entities.
+
+test is Error tells a failure from everything else
+let e = Error('timed out after 5 s; start it again with a bigger timeout_s')
+eval e is Error = true
+eval None is Error = false
+eval None('absent: A:x.p') is Error = false
+eval 1 is Error = false
+eval 'x' is Error = false
+eval False is Error = false
+eval [] is Error = false
+
+test is names the value kinds by the casts spellings
+eval 1 is Int = true
+eval 1 is Float = false
+eval 1.5 is Float = true
+eval 'a' is Text = true
+eval 1 is Text = false
+eval True is Bool = true
+eval 1 is Bool = false
+eval [1] is List = true
+eval {'a': 1} is Dict = true
+eval [1] is Dict = false
+eval None is Int = false
+
+test is follows the class list of an entity
+given Trip:a {"parents": ["cls:place"]}
+given Place:b {}
+let t = ${'Trip:a'}
+let p = ${'Place:b'}
+eval t is Trip = true
+-- the second class of the list counts
+eval t is Place = true
+eval p is Place = true
+eval p is Trip = false
+-- the root class is every entity's last class
+eval p is Entity = true
+-- a value is not of a class
+eval 1 is Trip = false
+eval None is Trip = false
+
+test is with a list of names needs all of them
+given Trip:a {"parents": ["cls:place"]}
+given Place:b {}
+given Box:c {}
+let t = ${'Trip:a'}
+let p = ${'Place:b'}
+let b = ${'Box:c'}
+eval t is (Trip, Place) = true
+eval p is (Trip, Place) = false
+eval b is (Trip, Place) = false
+eval p is (Place,) = true
+-- `or` is the any form
+eval t is Trip or t is Box = true
+
+test is not negates
+given Place:b {}
+let e = Error('boom')
+let p = ${'Place:b'}
+eval 1 is not Error = true
+eval e is not Error = false
+eval p is not Trip = true
+eval p is not Place = false
+-- `not x is Error` reads as `not (x is Error)`
+eval not e is Error = false
+eval not 1 is Error = true
+
+test is sits at comparison precedence
+eval 1 + 1 is Int = true
+eval 1 is Int and 'a' is Text = true
+eval (1 is Int) == True = true
+
+test an is that cannot be read is a parse error
+-- the null test stays `x == None`
+eval 1 is None = error: == None
+eval 1 is 3 = error: is
+eval 1 is 'a' = error: is
+eval 1 is x.y = error: is
+eval 1 is = error: is
+eval 1 is ( = error: is
+eval 1 is () = error: is
+-- two value kinds that can never both match
+eval 1 is (Int, Text) = error: never
+eval 1 is (Int, Error) = error: never
+eval 1 is (Float, Int) = error: never
+eval 1 is (Float, Text) = error: never
+eval 1 is (Num, Text) = error: never
+eval 1 is (Num, Error) = error: never
+-- comparisons do not chain with is
+eval a == b is Error = error: chain
+eval a is Error == b = error: chain
+eval a is Int is Int = error: chain
+eval a < b is Int = error: chain
+
+test the same kind twice can match and a class list reads
+let e = Error('x')
+let ok = 1 is Int
+eval 1 is (Int, Int) = true
+eval e is (Trip, Place) = false
+eval ok = true
+
+test the name Error is reserved as a kind
+PACK p 1
+A.x getter:
+  Error = 1
+  Error
+error: reserved
+
+test no class may be called Error
+PACK p 1
+Error.x getter: 1
+error: reserved
+
+test no setter of a class Error either
+PACK p 1
+Error.x on-setter s:
+  ALWAYS:
+    this.y = 1
+error: reserved
+
+test no resident class Error
+PACK p 1
+RESIDENT Error
+error: reserved
+
+test no virtual class error
+PACK p 1
+VIRTUAL error
+error: reserved
+
+test an error is not null and not a bool
+let e = Error('x')
+let n = None
+eval n == None = true
+eval e == None = false
+eval e != None = true
+eval n != None = false
+eval None == e = false
+eval Error('x') == None('absent: x') = false
+
+test an error serialises as null for the old routes
+let e = Error('x')
+eval e = null
+eval [1, e] = [1, null]
+
+test why reads an errors text
+let e = Error('timed out after 5 s; start it again with a bigger timeout_s')
+let n = None('absent: A:x.p')
+eval why(e) = "timed out after 5 s; start it again with a bigger timeout_s"
+-- a null keeps its why
+eval why(n) = "absent: A:x.p"
+
+test an error made in a pack is Error of a reason
+eval why(Error('no such file; make it first')) = "no such file; make it first"
+eval Error('x') is Error = true
+eval Error('x') == None = false
+-- an Error says why: one reason
+eval Error() = error: takes 1 arguments
+-- the remedy is part of the text: one argument
+eval Error('a', 'b') = error: takes 1 arguments
+eval why(Error('no ' + 'file')) = "no file"
+
+test num is a value kind that int and float extend
+-- operator decision 2026-11-13: `Num` is Int or Float; an Int is also a Num, so `(Int, Num)` all-must-match holds for an Int
+let e = Error('x')
+eval 1 is Num = true
+eval 1.5 is Num = true
+eval 'a' is Num = false
+eval True is Num = false
+eval None is Num = false
+eval [1] is Num = false
+eval 1 is not Num = false
+eval 'a' is not Num = true
+eval 1 is (Int, Num) = true
+eval 1.5 is (Int, Num) = false
+eval 1.5 is (Float, Num) = true
+eval 1 is (Float, Num) = false
+eval 1 is (Num, Num) = true
+eval 1 is (Num,) = true
+eval e is Num = false
