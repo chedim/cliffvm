@@ -1,0 +1,20 @@
+-- `keys(d)`: the keys of a dict, as a list of text, in the order the dict holds them (#1143). Converted from tests/keys_1143.rs; what stays Rust there is the step budget and the RESERVED list.
+
+-- test the keys of a dict come in the order it holds them
+-- eval keys({'b': 1, 'a': 2, 'c': 3}) = ["b", "a", "c"]
+-- eval keys({'a': 2, 'b': 1}) = ["a", "b"]
+-- eval keys({}) = []
+
+-- test it reads a dict held by an entity and composes with the other builtins
+-- given A:1 {"d": {"k": "one", "j": 2}, "list": [1, 2]}
+-- eval keys(${'A:1'}['d']) = ["k", "j"]
+-- eval len(keys(${'A:1'}['d'])) = 2
+-- eval [${'A:1'}['d'][k] for k in keys(${'A:1'}['d'])] = ["one", 2]
+-- eval sort_by([{'k': k} for k in keys({'b': 1, 'a': 2})], 'k') = [{"k": "a"}, {"k": "b"}]
+
+-- test a read that has not arrived is an empty list and anything else is an error
+-- eval keys(${'A:9'}['d']) = []
+-- eval keys([1, 2]) = error: keys
+-- eval keys('text') = error: keys
+-- eval keys(1) = error: keys
+-- eval keys(1, 2) = error: keys

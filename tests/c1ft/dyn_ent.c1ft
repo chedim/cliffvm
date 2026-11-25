@@ -1,0 +1,62 @@
+-- `${expr}`: the entity whose id is the value of `expr` (#1143). Converted from tests/dyn_ent_1143.rs; what stays Rust there is the step budget.
+-- The Rust test held t, p, none and n as variables; here they are properties of one entity, `Holder:h`.
+
+-- test a text in braces is the entity it names and a key or a dot reads its property
+-- given Command:x {"status": "ok", "rc": 0}
+-- given Holder:h {"t": "Command:x", "p": "rc", "n": 3}
+-- eval ${'Command:x'}['status'] = "ok"
+-- eval ${Holder:h.t}.status = "ok"
+-- eval ${Holder:h.t}[Holder:h.p] = 0
+-- eval [${Holder:h.t}[k] for k in ['status', 'rc']] = ["ok", 0]
+
+-- test a property the entity lacks is a null and a null id is a null
+-- given Command:x {"status": "ok"}
+-- given Holder:h {"t": "Command:x", "p": "rc"}
+-- eval ${Holder:h.t}.nope = null
+-- eval ${Holder:h.none}[Holder:h.p] = null
+
+-- test only a text names an entity and a dollar alone is not an expression
+-- given Holder:h {"n": 3}
+-- eval ${Holder:h.n}['x'] = null
+-- eval ${True}['x'] = null
+-- eval ${[1]}['x'] = error: item 0
+-- eval $x = error: $
+-- eval '${Holder:h.n}' = "${Holder:h.n}"
+
+-- test prop and props are not builtins any more
+-- eval prop('Command:x', 'status') = error: built-ins
+-- eval props(['Command:x'], 'status') = error: built-ins
+
+-- test a dict in braces stays the dict so the rewrite of a dict read is one to one
+-- eval ${{'a': 1}}['a'] = 1
+-- eval [${r}['a'] for r in [{'a': 1}, {'a': 2}]] = [1, 2]
+
+-- test a list of ids in braces reads one property of every entity
+-- given Command:x {"status": "ok", "rc": 0}
+-- given Command:y {"status": "bad"}
+-- eval ${['Command:x', 'Command:y']}['status'] = ["ok", "bad"]
+-- eval ${['Command:x', 'Command:y']}.status = ["ok", "bad"]
+-- eval ${[]}['status'] = []
+-- eval ${[{'status': 'd'}]}['status'] = ["d"]
+
+-- test a null item stays a null and an item that is no entity is an error that names it
+-- given Command:x {"status": "ok", "rc": 0}
+-- given Command:y {"status": "bad"}
+-- eval ${['Command:x', None, 'Command:y']}['rc'] = [0, null, null]
+-- eval ${['Command:x', 3]}['status'] = error: item 1
+-- eval ${['Command:x']}['_hidden'] = error: _hidden
+
+-- test one element of each value: the i-th value takes at[i]
+-- given Command:x {"ids": ["x0", "x1", "x2"]}
+-- given Command:y {"ids": ["y0", "y1"], "d": {"k": "one"}}
+-- eval ${['Command:x', 'Command:y', 'Command:x']}['ids'][[2, 0, 1]] = ["x2", "y0", "x1"]
+-- eval ${['Command:y']}['d'][['k']] = ["one"]
+-- eval ${['Command:x', 'Command:y']}.ids[[-1, 1]] = ["x2", "y1"]
+
+-- test a null or a missing index is a null and a wrong shape says why
+-- given Command:x {"ids": ["x0", "x1", "x2"]}
+-- given Command:y {"ids": ["y0", "y1"]}
+-- eval ${['Command:x', 'Command:y']}['ids'][[5, None]] = [null, null]
+-- eval ${['Command:x', 'Command:y']}['ids'][[0]] = error: one index per
+-- eval ${['Command:x']}['ids'][[[1]]] = error: index
+-- eval ${['Command:x']}['ids'][[1.5]] = error: index

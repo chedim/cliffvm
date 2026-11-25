@@ -22,3 +22,8 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - run: cargo nextest run --release --no-default-features --features bin --no-fail-fast
       - run: cargo test --release --no-default-features --features bin --doc
+      # tests written in c1f (tests/c1ft/, github.com/chedim/c1ft): the runner is built against THIS checkout, so they run on the engine under test
+      - name: c1ft
+        run: |
+          cargo install --git https://github.com/chedim/c1ft --force --config "patch.crates-io.cliffvm.path=\"$GITHUB_WORKSPACE\""
+          c1ft run tests/c1ft
