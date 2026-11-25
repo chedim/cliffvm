@@ -1,0 +1,111 @@
+-- Nulls propagate (the operator, 2026-11-12: "like in postgres"). An operation on a null gives a null, not an error, and the null carries WHY it is one (`pending: read(/a)`, `error: ...`, `absent`).
+-- Converted from tests/nulls.rs. A null that carries a reason is built as `None('<reason>')`, which is what a getter that has not heard yet reads.
+
+test a null operand gives a null not an error
+let n = None
+eval startswith(why(n + 1), 'absent') = true
+eval startswith(why(1 + n), 'absent') = true
+eval startswith(why(n * 2), 'absent') = true
+eval startswith(why(n - n), 'absent') = true
+eval startswith(why(-n), 'absent') = true
+eval startswith(why('x' + n), 'absent') = true
+eval startswith(why(n / 2), 'absent') = true
+
+test the reason of a null travels through everything it touches
+let p = None('pending: read(/a)')
+eval why(p + 1) = "pending: read(/a)"
+eval why(1 + p * 2) = "pending: read(/a)"
+eval why(-p) = "pending: read(/a)"
+eval why(p['k']) = "pending: read(/a)"
+eval why(p.x) = "pending: read(/a)"
+eval why(max(1, p)) = "pending: read(/a)"
+eval why(min(p, 2)) = "pending: read(/a)"
+eval why([p][0] + 1) = "pending: read(/a)"
+eval why(abs(p)) = "pending: read(/a)"
+eval why((p + 1) + 2) = "pending: read(/a)"
+eval why({'a': p}['a'] + 1) = "pending: read(/a)"
+
+test the first reason wins when two nulls meet
+let a = None('pending: sql(x)')
+let b = None('error: boom')
+eval why(a + b) = "pending: sql(x)"
+
+test a null with a reason is still null the old ways
+let p = None('pending: read(/a)')
+eval p == None = true
+eval not p = true
+eval p or 'd' = "d"
+eval p if p else 'x' = "x"
+eval p = null
+
+test an error that is not about a null is still an error
+let n = 3
+eval len(3) = error: has no len
+eval 'a' + 1 = error: not a number
+eval n.x = error: attributes are read on entities only
+
+test the silent coercions are unchanged until step three
+let l = None('pending: read(/a)')
+let n = None
+eval len(l) = 0
+eval [x for x in l] = []
+eval plain(n) = ""
+eval n > 0 = false
+
+test none called with a reason is a null that says why
+-- None is a class like any other: None('why') constructs a null that carries its reason (a setter can write one)
+eval why(None('sheeeeet')) = "sheeeeet"
+eval why(None()) = "null"
+eval why(None('a') + 1) = "a"
+eval None('a') == None = true
+eval None('a') or 'd' = "d"
+eval not None('a') = true
+eval None('a') = null
+eval why(None('no ' + 'file')) = "no file"
+
+-- casts: a checked narrowing, spelled as the type's capitalized name. Int(x) is x when x is an int; otherwise an Error('not-a-type: int expected, got text'). A null stays the null it was.
+
+test a cast gives the value back when it has the type
+eval Int(3) = 3
+eval Float(2.5) = 2.5
+eval Text('a') = "a"
+eval Bool(True) = true
+eval Num(3) = 3
+eval Num(2.5) = 2.5
+eval List([1, 2]) = [1, 2]
+eval Dict({'a': 1}) = {"a": 1}
+
+test a cast of a value that does not have the type is an error that says so
+eval Int('a') = error: not-a-type: int expected, got text
+eval Int(3.0) = error: not-a-type: int expected, got float
+eval Float(3) = error: not-a-type: float expected, got int
+eval Text(3) = error: not-a-type: text expected, got int
+eval Bool(1) = error: not-a-type: bool expected, got int
+eval Num('3') = error: not-a-type: num expected, got text
+eval List({}) = error: not-a-type: list expected, got dict
+eval Dict([]) = error: not-a-type: dict expected, got list
+
+test a cast of a null is that null
+let p = None('pending: read(/a)')
+let n = None
+eval why(Int(p)) = "pending: read(/a)"
+eval Text(n) == None = true
+
+test a failed cast is an error that or does not hide and a union is written with is
+-- `Int(v) or Text(v)` used to be the union of two casts; a failed cast is an Error now and `or` never hides an Error: the union is `is`
+let v = 'x'
+eval Int(v) or Text(v) = error: not-a-type: int expected, got text
+eval v if v is Int or v is Text else None = "x"
+eval Int('a') + 1 = error: not-a-type: int expected, got text
+eval Int('a') == None = false
+
+test a union of casts gives the int when it is one
+let v = 4
+eval Int(v) or Text(v) = 4
+
+test why reads the reason of a null as text and is null for anything else
+let pr = None('pending: read(/a)')
+eval why(None('no file')) = "no file"
+eval why(pr) = "pending: read(/a)"
+eval why(1) == None = true
+eval why('t') or 'none' = "none"
