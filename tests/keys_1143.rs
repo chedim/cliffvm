@@ -1,5 +1,6 @@
 //! `keys(d)`: the keys of a dict, as a list of text, in the order the dict holds them (#1143, operator 2026-11-16: the one builtin of the old "proposed, not added" list that is added).
 //! It is pure (a value in, a list out), costs one step whatever the size, and a read still pending is an empty list, as `pluck` does.
+//! What it gives and where it fails are tests/c1ft/keys.c1ft; what stays here is the step budget and the reserved name, which c1ft cannot say.
 use cliffvm::expr::{self, V};
 use serde_json::{json, Value as J};
 use std::collections::HashMap;
@@ -13,36 +14,6 @@ fn world() -> W {
     m.insert(("A:1".to_string(), "d".to_string()), expr::from_json(&json!({"k": "one", "j": 2})));
     m.insert(("A:1".to_string(), "list".to_string()), expr::from_json(&json!([1, 2])));
     W(m)
-}
-fn run(src: &str) -> Result<V, String> {
-    let n = expr::parse(src).map_err(|e| e.to_string())?;
-    expr::eval(&n, &HashMap::new(), &world())
-}
-fn ok(src: &str) -> J { expr::to_json(&run(src).unwrap_or_else(|e| panic!("{src}: {e}"))).unwrap() }
-fn err(src: &str) -> String { match run(src) { Err(e) => e, Ok(V::Error(e)) => e.text(), Ok(v) => panic!("{src}: not an error: {v:?}") } }
-
-#[test]
-fn the_keys_of_a_dict_come_in_the_order_it_holds_them() {
-    assert_eq!(ok("keys({'b': 1, 'a': 2, 'c': 3})"), json!(["b", "a", "c"]));
-    assert_eq!(ok("keys({'a': 2, 'b': 1})"), json!(["a", "b"]), "a reorder is a different order");
-    assert_eq!(ok("keys({})"), json!([]));
-}
-
-#[test]
-fn it_reads_a_dict_held_by_an_entity_and_composes_with_the_other_builtins() {
-    assert_eq!(ok("keys(${'A:1'}['d'])"), json!(["k", "j"]));
-    assert_eq!(ok("len(keys(${'A:1'}['d']))"), json!(2));
-    assert_eq!(ok("[${'A:1'}['d'][k] for k in keys(${'A:1'}['d'])]"), json!(["one", 2]));
-    assert_eq!(ok("sort_by([{'k': k} for k in keys({'b': 1, 'a': 2})], 'k')"), json!([{"k": "a"}, {"k": "b"}]));
-}
-
-#[test]
-fn a_read_that_has_not_arrived_is_an_empty_list_and_anything_else_is_an_error() {
-    assert_eq!(ok("keys(${'A:9'}['d'])"), json!([]), "an absent property is a pending read: nothing to list");
-    assert!(err("keys([1, 2])").contains("keys"), "a list has no keys");
-    assert!(err("keys('text')").contains("keys"), "a text has no keys (an entity's names are `meta`)");
-    assert!(err("keys(1)").contains("keys"), "a number has no keys");
-    assert!(err("keys(1, 2)").contains("keys"), "one argument");
 }
 
 #[test]
