@@ -1,0 +1,115 @@
+-- Null reasons and the mention cascade (#1143, the model's live findings): a missing property is a null that says `absent` (naming the entity and the property); a reasoned null inside a list or a dict
+-- keeps its reason. Converted from tests/semantics_1143.rs; what stays Rust there is the restart that reopens the store with another pack header.
+
+test a missing property is a null that says absent and names the entity and the property
+PACK sem 1
+Box.why getter: why(this.price)
+Box.viaprop getter: why(${this}['cost'])
+given Box:a {}
+eval startswith(Box:a.why, 'absent') = true
+eval 'Box:a' in Box:a.why = true
+eval 'price' in Box:a.why = true
+eval startswith(Box:a.viaprop, 'absent') = true
+eval 'cost' in Box:a.viaprop = true
+
+test a missing property is still null the old ways
+PACK sem 1
+Box.a getter: this.price or 7
+Box.b getter: this.price == None
+Box.c getter: 'x' if this.price else 'y'
+given Box:a {}
+reads Box:a.a = 7
+reads Box:a.b = true
+reads Box:a.c = "y"
+
+-- item 2: a reasoned null inside a list or a dict keeps its reason
+
+test a reasoned null in a list or a dict keeps its reason in an expression and in a stored value
+PACK sem 1
+Box.l getter: [this.price, 3]
+Box.d getter: {'a': this.price, 'b': {'c': None('boom')}}
+Box.in_expr getter: why([this.price][0])
+Box.lw getter: why(this.l[0])
+Box.lw1 getter: why(this.l[1])
+Box.dw getter: why(this.d['a'])
+Box.dw2 getter: why(this.d['b']['c'])
+given Box:a {}
+-- in an expression
+eval startswith(Box:a.in_expr, 'absent') = true
+eval 'price' in Box:a.in_expr = true
+-- in a stored list
+eval startswith(Box:a.lw, 'absent') = true
+eval 'price' in Box:a.lw = true
+-- a number has no reason
+reads Box:a.lw1 = null
+-- in a stored dict
+eval 'price' in Box:a.dw = true
+-- nested in a dict in a dict
+reads Box:a.dw2 = "boom"
+-- what is stored and sent is unchanged: a plain null
+reads Box:a.l = [null, 3]
+-- the value moves on: the reason goes
+write Box:a.price = 5
+reads Box:a.l = [5, 3]
+reads Box:a.lw = null
+
+test str of a container shows the reason of a null inside it
+PACK sem 1
+Box.l getter: [this.price, 3]
+Box.t getter: str(this.l)
+Box.t2 getter: str({'k': None('boom')})
+Box.t3 getter: str([None])
+given Box:a {}
+eval 'absent' in Box:a.t = true
+eval 'price' in Box:a.t = true
+eval 'boom' in Box:a.t2 = true
+-- a null with no reason stays null
+reads Box:a.t3 = "[null]"
+
+-- item 4: a class a pack counts with `instances` is declared RESIDENT by the pack that owns it; a trigger takes a new value each time
+
+test a write of the value a property holds runs no setter and a new value does
+-- the door's `entity_write` is a setter that writes `<entity>.<prop> = <value>` (door_tools.c1f `mcp-write`): a write by the field, which changes nothing when the value is the held one
+PACK sem 1
+Keep.line getter: 'k ' + str(this.title)
+Watch.keeps_now getter: len([k for k in instances('Keep') if k.done != True])
+Watch.snap on-setter snapshot:
+  ALWAYS:
+    this.last_keeps = this.keeps_now
+Watch.alert getter: 'ALERT' if this.last_keeps != None and this.keeps_now < this.last_keeps else ''
+Door.go on-setter w:
+  ALWAYS:
+    Watch:main.snap = this.go
+given Watch:main {}
+given Door:d {}
+given Keep:k0 {"title": "t"}
+given Keep:k1 {"title": "t"}
+given Keep:k2 {"title": "t"}
+write Door:d.go = 1
+-- the first snap
+reads Watch:main.last_keeps = 3
+given Keep:k3 {"title": "t"}
+-- the door is written again and writes 1 again: the held value, nothing runs
+write Door:d.go = 1
+reads Watch:main.last_keeps = 3
+-- a new value runs it
+write Door:d.go = 2
+reads Watch:main.last_keeps = 4
+
+-- a missing ENTITY says so too (#1143, a live finding): `why(Box:zzz.total)` was a plain null
+
+test a missing entity is a null that says it does not exist and a missing property on a real one still names the property
+PACK sem 1
+Box.ent getter: why(${'Box:zzz'}['total'])
+Box.lit getter: why(Box:zzz.total)
+Box.real getter: why(${'Box:b'}['total'])
+Box.alt getter: ${'Box:zzz'}['total'] or 5
+Box.isnone getter: ${'Box:zzz'}['total'] == None
+given Box:b {}
+given Box:a {}
+reads Box:a.ent = "absent: Box:zzz does not exist"
+reads Box:a.lit = "absent: Box:zzz does not exist"
+reads Box:a.real = "absent: Box:b.total"
+-- still null the old ways
+reads Box:a.alt = 5
+reads Box:a.isnone = true
