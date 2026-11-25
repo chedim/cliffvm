@@ -348,6 +348,7 @@ struct View<'a> { core: &'a Core }
 
 impl<'a> expr::World for View<'a> {
     fn attr(&self, eid: &str, attr: &str) -> V {
+        let eid = &*self.core.resolved(eid);   // a bare id some twin holds reads the twin (#1143)
         if matches!(eid.as_bytes().first(), Some(b'P' | b'A' | b'R' | b'C')) && !self.core.docs.contains_key(eid) { if let Some(v) = expr::reason_attr(eid, attr) { return v; } }   // an engine reason (`Refused:boom`): a synthetic entity with no row, it answers `cls` and `text` (before the foreign test: its detail may hold a `::`)
         if self.core.own_ns.is_some() { if let Some(v) = self.core.foreign_read(eid, attr) { return v; } }
         let Some(e) = self.core.docs.get(eid) else {
@@ -378,12 +379,14 @@ impl<'a> expr::World for View<'a> {
     fn refs(&self, eid: &str, prop: &str) -> Vec<String> { self.core.refs(eid, prop) }
     fn host(&self, f: &str, a: &[V]) -> Option<Result<V, String>> { self.core.native_call(f, a) }
     fn is_class(&self, eid: &str, cls: &str) -> bool {
+        let eid = &*self.core.resolved(eid);
         if !self.core.docs.contains_key(eid) && self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); }
         crate::fields::entity_is(self.core, eid, cls)
     }
     /// `meta('Class:id')` (#1143): the class, its parents, the names of the properties the entity holds (a getter's value is not one), and the getters and setters of its classes. Names only.
     /// A stored entity that is not loaded is asked for, as `attr` does.
     fn meta(&self, eid: &str) -> V {
+        let eid = &*self.core.resolved(eid);
         let Some(e) = self.core.docs.get(eid) else {
             if self.core.unloaded.contains_key(eid) { self.core.wanted.borrow_mut().insert(eid.to_string()); return V::None; }   // stored, not loaded: asked for
             return V::Nil(Reason::Ent(format!("Absent:{eid} does not exist")));   // not there: a null that says so, as `attr` does
@@ -426,6 +429,7 @@ pub const CLASS_READ: &str = "\u{0}class";
 impl<'a> expr::World for Traced<'a> {
     fn attr(&self, eid: &str, attr: &str) -> V {
         self.reads.borrow_mut().push((eid.to_string(), attr.to_string()));
+        if let Some(t) = self.inner.core.twin_key(eid) { self.reads.borrow_mut().push((t, attr.to_string())); }   // a bare id nobody holds: also read under its twin (born later, changed)
         self.inner.attr(eid, attr)
     }
     fn refs(&self, eid: &str, prop: &str) -> Vec<String> {
@@ -435,6 +439,7 @@ impl<'a> expr::World for Traced<'a> {
     /// `x is Class` reads the entity's `parents`: the getter that asked is dirty when they change
     fn is_class(&self, eid: &str, cls: &str) -> bool {
         self.reads.borrow_mut().push((eid.to_string(), "parents".to_string()));
+        if let Some(t) = self.inner.core.twin_key(eid) { self.reads.borrow_mut().push((t, "parents".to_string())); }
         self.inner.is_class(eid, cls)
     }
     /// every property of the entity is read: a change of any of them (and a new one, and its classes) makes the getter that asked dirty
@@ -629,6 +634,18 @@ impl Core {
     /// A foreign id: it has `::` and the text before it is not this VM's namespace.
     pub fn is_foreign(&self, eid: &str) -> bool {
         match (&self.own_ns, eid.split_once("::")) { (Some(ns), Some((p, _))) => p != ns, _ => false }
+    }
+    /// The seat's own namespace twin of a bare id (#1143): `Thing:t1` when no entity has that id (loaded, stored or collected) is `<own ns>::Thing:t1`. None for an id that has `::`
+    /// (it names its namespace), for a bare id some entity holds, and before the engine knows its namespace. The twin need not exist: a read that found nothing is also noted under it,
+    /// so the reader is dirty when the twin is born.
+    pub fn twin_key(&self, eid: &str) -> Option<String> {
+        let ns = self.own_ns.as_deref()?;
+        if eid.contains("::") || self.docs.contains_key(eid) || self.unloaded.contains_key(eid) || self.collected_set.contains(eid) { return None; }
+        Some(format!("{ns}::{eid}"))
+    }
+    /// The id a read goes to: the twin when the bare id is held by nobody and the twin is (loaded or stored), else the id as written.
+    fn resolved<'e>(&self, eid: &'e str) -> std::borrow::Cow<'e, str> {
+        match self.twin_key(eid) { Some(t) if self.docs.contains_key(&t) || self.unloaded.contains_key(&t) => std::borrow::Cow::Owned(t), _ => std::borrow::Cow::Borrowed(eid) }
     }
     /// A foreign entity the link feeds: inert (no getter, no setter).
     pub fn is_replica(&self, eid: &str) -> bool { !self.replicas.is_empty() && self.replicas.contains_key(eid) }
