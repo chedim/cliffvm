@@ -1,0 +1,10 @@
+-- #1101: a bare it / that / they in a c1f expression, with no variable of that name, resolves through the host's context stack at the moment it runs; unbound, it fails naming the pronoun
+-- (never a silent wrong target). Converted from tests/pronouns_1101.rs: what stays Rust there are the cases that need a context stack bound by the host (the pronoun resolving, and a variable
+-- winning over it).
+
+test an unbound pronoun fails naming it
+eval it.name = error: the pronoun "it" is not bound
+eval them = error: "them"
+
+test any other unknown name stays unbound
+eval banana = error: unbound name

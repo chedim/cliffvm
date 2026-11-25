@@ -1,0 +1,243 @@
+-- `x if c else y` in expressions, and getter arms: alternative definitions of one field, the first whose WHEN holds wins, an arm without WHEN is the default
+-- (the operator, 2026-11-10: "if arms as alternative definitions of the same field"). Arms compile to bare ifs. Converted from tests/getter_arms.rs;
+-- what stays Rust there is the print/parse round trip of a FOR block.
+
+test a bare if picks its branch
+PACK t 1
+Light.word getter: 'on' if this.level > 0 else 'off'
+Light.broken getter: 'on' if this.level > 0 else 'dim' if this.level == 0 else 'broken'
+given Light:a {"level": 0, "label": "start"}
+write Light:a.level = 3
+reads Light:a.word = "on"
+write Light:a.level = -1
+reads Light:a.broken = "broken"
+
+test the first arm whose when holds defines the field
+PACK t 1
+Light.word getter WHEN this.level > 5: 'bright'
+Light.word getter WHEN this.level > 0: 'on'
+Light.word getter: 'off'
+given Light:a {"level": 0, "label": "start"}
+write Light:a.level = 9
+reads Light:a.word = "bright"
+write Light:a.level = 2
+reads Light:a.word = "on"
+write Light:a.level = -2
+reads Light:a.word = "off"
+
+test a default arm reading its own field keeps the value
+PACK t 1
+Light.shown getter WHEN this.level > 0: this.label
+Light.shown getter: this.shown
+given Light:a {"level": 0, "label": "start"}
+write Light:a.level = 1
+write Light:a.label = "kitchen"
+write Light:a.level = 0
+write Light:a.label = "hall"
+reads Light:a.shown = "kitchen"
+
+test an arm after the default is refused when the pack loads
+PACK t 1
+Light.word getter: 'off'
+Light.word getter WHEN this.level > 0: 'on'
+error: after its default
+
+test two defaults are refused
+PACK t 1
+Light.word getter: 'a'
+Light.word getter: 'b'
+error: two defaults
+
+test a when with no condition is refused
+PACK t 1
+Light.word getter WHEN : 'on'
+error: no condition
+
+test a lone when arm loads
+PACK t 1
+Light.word getter WHEN this.level > 0: 'on'
+given Light:a {"level": 1}
+reads Light:a.word = "on"
+
+-- setters and getters support the same forms (the operator, 2026-11-10)
+
+test a setter for block writes once per item and creates entities
+PACK t 1
+Shelf.listed on-setter books:
+  ALWAYS:
+    FOR b IN this.listed:
+      ('Book:' + this.name + ':' + b['title']).title = b['title']
+      ('Book:' + this.name + ':' + b['title']).shelf = this.eid
+      FOR t IN (b['tags'] or []):
+        ('Tag:' + t).seen = True
+    this.count = len(this.listed or [])
+Book.title getter: this.title
+Tag.kind getter: 'tag'
+given Shelf:a {"name": "a"}
+write Shelf:a.listed = [{"title": "dune", "tags": ["sf", "desert"]}, {"title": "emma"}]
+reads Book:a:dune.shelf = "Shelf:a"
+reads Book:a:emma.title = "emma"
+reads Tag:sf.seen = true
+exists Tag:desert
+-- the write after the block runs once
+reads Shelf:a.count = 2
+-- None: zero iterations
+write Shelf:a.listed = null
+reads Shelf:a.count = 0
+
+test a for over a non-list stops the setter with a receipt
+PACK t 1
+Shelf.listed on-setter books:
+  ALWAYS:
+    FOR b IN this.listed:
+      ('Book:' + this.name + ':' + b['title']).title = b['title']
+      ('Book:' + this.name + ':' + b['title']).shelf = this.eid
+      FOR t IN (b['tags'] or []):
+        ('Tag:' + t).seen = True
+    this.count = len(this.listed or [])
+given Shelf:a {"name": "a"}
+write Shelf:a.listed = "not a list"
+eval 'not a list' in str(Shelf:a.refused) = true
+-- the setter wrote nothing
+reads Shelf:a.count = null
+
+test for is a list in getters and in setter values
+PACK t 1
+Shelf.titles getter: FOR b IN (this.listed or []): b['title']
+Shelf.listed on-setter copy:
+  ALWAYS:
+    this.upper = FOR b IN this.listed: b['title'] + '!'
+given Shelf:a {"name": "a"}
+write Shelf:a.listed = [{"title": "dune"}, {"title": "emma"}]
+reads Shelf:a.titles = ["dune", "emma"]
+reads Shelf:a.upper = ["dune!", "emma!"]
+
+test a getter takes the setters block form
+PACK t 1
+Light.word getter:
+  WHEN this.level > 5: 'bright'
+  ELSE WHEN this.level > 0: 'on'
+  ELSE: 'off'
+given Light:a {"level": 0, "label": "start"}
+write Light:a.level = 9
+reads Light:a.word = "bright"
+write Light:a.level = 1
+reads Light:a.word = "on"
+write Light:a.level = 0
+reads Light:a.word = "off"
+
+test an else with no when is refused
+PACK t 1
+Light.w getter:
+  ELSE: 1
+error: must follow a WHEN
+
+test a second when in a block is refused
+PACK t 1
+Light.w getter:
+  WHEN 1: 1
+  WHEN 2: 2
+error: second WHEN
+
+test a getter with a header line and arms is refused
+PACK t 1
+Light.w getter: 3
+  WHEN 1: 1
+error: header line
+
+test a for with no body is refused
+PACK t 1
+Shelf.l on-setter s:
+  ALWAYS:
+    FOR b IN this.l:
+    this.x = 1
+error: no writes under it
+
+test a for needs a plain name
+PACK t 1
+Shelf.l on-setter s:
+  ALWAYS:
+    FOR 2b IN this.l: this.x = 1
+error: one word
+
+test a for over entities binds each entity
+PACK t 1
+Shelf.listed on-setter books:
+  ALWAYS:
+    FOR b IN this.listed:
+      ('Book:' + this.name + ':' + b['title']).title = b['title']
+      ('Book:' + this.name + ':' + b['title']).shelf = this.eid
+      FOR t IN (b['tags'] or []):
+        ('Tag:' + t).seen = True
+    this.count = len(this.listed or [])
+Book.title getter: this.title
+Tag.kind getter: 'tag'
+Shelf.sweep on-setter retire:
+  ALWAYS:
+    FOR b IN referencing(this, 'shelf'):
+      b.kept = b['title'] in (this.sweep or [])
+given Shelf:a {"name": "a"}
+write Shelf:a.listed = [{"title": "dune"}, {"title": "emma"}]
+write Shelf:a.sweep = ["emma"]
+reads Book:a:dune.kept = false
+reads Book:a:emma.kept = true
+
+test a read through an entitys id follows it
+PACK t 1
+Book.shelf_name getter: ${this.shelf}['name']
+Shelf.kind getter: 'shelf'
+given Shelf:a {"name": "attic"}
+given Book:x {"shelf": "Shelf:a"}
+reads Book:x.shelf_name = "attic"
+-- the read is tracked: it follows
+write Shelf:a.name = "cellar"
+reads Book:x.shelf_name = "cellar"
+
+test instances lists a class and follows births and writes
+PACK t 1
+Shelf.books getter: [b['title'] for b in instances('Book')]
+Book.kind getter: 'book'
+given Shelf:a {"name": "a"}
+given Book:1 {"title": "dune"}
+write Shelf:a.poke = 1
+reads Shelf:a.books = ["dune"]
+given Book:2 {"title": "emma"}
+write Book:2.title = "emma"
+reads Shelf:a.books = ["dune", "emma"]
+-- a write to one it read
+write Book:1.title = "dune messiah"
+reads Shelf:a.books = ["dune messiah", "emma"]
+
+test long arms fold and run
+PACK t 1
+Light.long getter:
+  WHEN this.level > 5: this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label
+  ELSE WHEN this.level > 0: this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label
+  ELSE: this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label + ' ' + this.label
+given Light:a {"level": 0, "label": "start"}
+write Light:a.level = 1
+eval startswith(Light:a.long, 'start start') = true
+
+test there is no size cap any more: a long arm loads
+-- the evaluation has a step budget instead
+PACK t 1
+Light.big getter: this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label + this.label
+given Light:a {"label": "x"}
+exists Light:a
+
+test a getter applies to an entity of its kind by isa
+-- the scripts migration: a Component keeps its class and gains a kind; the kind's getters apply to it
+PACK t 1
+ChatThing.heard getter: this.heard_n or 0
+given cls:chatthing {}
+given Component:chat:a {"heard_n": 4, "parents": ["cls:chatthing"]}
+given Component:other {"heard_n": 9}
+reads Component:chat:a.heard = 4
+-- only its kind
+reads Component:other.heard = null
+
+test the kinds own entity need not be in the field: its id names it
+PACK t 1
+ChatThing.heard getter: this.heard_n or 0
+given Component:chat:b {"heard_n": 2, "parents": ["membrane::cls:chatthing"]}
+reads Component:chat:b.heard = 2
