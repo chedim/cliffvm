@@ -1,0 +1,5 @@
+PACK plain 1
+Trig.go on-setter w:
+  ALWAYS: Cls:a.val = 1
+Trig.mk on-setter c:
+  ALWAYS: Cls:made.val = 1

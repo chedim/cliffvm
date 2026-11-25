@@ -1,0 +1,3 @@
+PACK root 1
+Trig.go on-setter grant-kid:
+  ALWAYS: Pack:kid.privileged = True
