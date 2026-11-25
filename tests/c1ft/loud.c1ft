@@ -13,7 +13,7 @@ eval 'draw' in str(Trig:t.refused) = true
 eval 'no loaded pack declares' in str(Trig:t.refused) = true
 
 test creating an entity of another packs class without the import is refused with a receipt
-load own.c1f
+load loud/own.c1f
 load draw.c1f
 given Trig:t {}
 write Trig:t.mk = 1

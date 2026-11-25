@@ -1,2 +1,2 @@
 PACK own 1
-Cls.tag getter: 'tag'
+Cell.shown getter: this.eid
