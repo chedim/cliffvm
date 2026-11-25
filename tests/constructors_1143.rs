@@ -4,6 +4,7 @@
 //! is idempotent: an entity that exists is not created again and a property that already has a value is not overwritten. A target
 //! whose eid prefix is not the class (`membrane::Config:...` built as `Voice(...)`) is stamped `parents: ['cls:voice']`, the ISA
 //! kind-mirror, so the engine mirrors it by kind.
+//! What they do is tests/c1ft/constructors.c1ft; what stays here looks at the engine's own birth events and refusal lists, the print/parse round trip and the static type.
 use cliffvm::fields::Fields;
 use cliffvm::infer::infer_src;
 use cliffvm::syntax::{parse, parse_full, print};
@@ -43,53 +44,26 @@ fn born(f: &Fields) -> Vec<String> { f.out.iter().filter_map(|o| o.get("born").m
 fn p<'a>(c: &'a Core, e: &str) -> &'a serde_json::Map<String, J> { &c.docs.get(e).unwrap_or_else(|| panic!("no entity {e}: {:?}", c.docs.keys().collect::<Vec<_>>())).props }
 
 #[test]
-fn a_constructor_creates_the_target_with_its_arguments_as_properties() {
+fn a_constructor_is_born_once_though_the_setter_runs_twice() {
     let (c, f) = run("    Thing:t1 = Thing(kind: 'in', n: this.n + 1)\n", json!({"n": 4}));
     assert_eq!(c.docs["Thing:t1"].cls, "Thing");
-    assert_eq!(p(&c, "Thing:t1")["kind"], json!("in"));
-    assert_eq!(p(&c, "Thing:t1")["n"], json!(5));
-    assert!(!p(&c, "Thing:t1").contains_key("parents"), "the prefix is the class: no kind stamp");
     assert_eq!(born(&f), ["Thing:t1"], "born once, though the setter ran twice");
 }
 
 #[test]
-fn the_target_is_the_identity_a_key_in_brackets_names_it() {
-    let (c, _) = run("    Thing:slot[this.slug] = Thing(kind: 'x')\n    Reply:r[this.n]:part = Reply(text: 'hi')\n", json!({"slug": "ann-b", "n": 3}));
-    assert_eq!(p(&c, "Thing:slot:ann-b")["kind"], json!("x"));
-    assert_eq!(p(&c, "Reply:r:3:part")["text"], json!("hi"));
-}
-
-#[test]
-fn a_foreign_prefix_is_stamped_with_the_kind_so_the_engine_mirrors_it() {
-    let (c, _) = run("    membrane::Config:voice:in[this.slug] = Thing(kind: 'in')\n    membrane::Chat:message[this.n]:response = Reply(text: 'hi')\n", json!({"slug": "ann-b", "n": 9}));
-    let v = p(&c, "membrane::Config:voice:in:ann-b");
-    assert_eq!(v["kind"], json!("in"));
-    assert_eq!(v["parents"], json!(["cls:config", "cls:thing"]), "the eid class first (the birth default), then the stamp");
-    assert_eq!(c.docs["membrane::Config:voice:in:ann-b"].cls, "Config", "it stays the class its eid names (the Python seat's)");
-    let r = p(&c, "membrane::Chat:message:9:response");
-    assert_eq!(r["parents"], json!(["cls:chat", "cls:reply"]));
-    assert_eq!(r["text"], json!("hi"));
-}
-
-#[test]
-fn a_constructor_is_idempotent_and_never_overwrites_a_value() {
+fn an_entity_that_exists_is_not_born_again() {
     let pack = format!("PACK t 1\n{OWN}Box.go on-setter t:\n  ALWAYS:\n    Thing:t1 = Thing(kind: 'new', n: 1, note: None)\n");
     let pre = [("Thing:t1", "Thing", json!({"kind": "old", "n": null}))];
     let (c, f) = run_with(&pack, json!({}), &pre);
-    assert_eq!(p(&c, "Thing:t1")["kind"], json!("old"), "a property that has a value stays");
-    assert_eq!(p(&c, "Thing:t1")["n"], json!(1), "an unset one is filled");
     assert!(born(&f).is_empty(), "an entity that exists is not created again");
-    assert!(!p(&c, "Thing:t1").contains_key("note") || p(&c, "Thing:t1")["note"].is_null(), "a null argument sets nothing");
 }
 
 #[test]
-fn a_foreign_entity_that_exists_keeps_what_it_has_and_gains_only_what_is_unset() {
+fn a_foreign_entity_that_exists_is_not_born_again_and_keeps_its_class_list() {
     let pack = format!("PACK t 1\n{OWN}Box.go on-setter t:\n  ALWAYS:\n    membrane::Config:voice:in:z = Thing(kind: 'in', person: 'Z')\n");
     let pre = [("membrane::Config:voice:in:z", "Config", json!({"person": "Zed", "parents": ["cls:thing"]}))];
     let (c, f) = run_with(&pack, json!({}), &pre);
-    assert_eq!(p(&c, "membrane::Config:voice:in:z")["person"], json!("Zed"));
-    assert_eq!(p(&c, "membrane::Config:voice:in:z")["kind"], json!("in"));
-    assert_eq!(p(&c, "membrane::Config:voice:in:z")["parents"], json!(["cls:thing"]));
+    assert_eq!(p(&c, "membrane::Config:voice:in:z")["parents"], json!(["cls:thing"]), "loaded as it was stored: the constructor added no class");
     assert!(born(&f).is_empty());
 }
 
@@ -112,29 +86,6 @@ fn a_null_or_bad_key_creates_nothing_and_says_why() {
 }
 
 #[test]
-fn only_named_arguments_make_a_constructor_and_a_plain_value_has_none() {
-    for (body, want) in [("Thing:x = Thing(1, 2)", "named"), ("Thing:x = Thing(a: 1, 2)", "named"), ("Thing:x = Thing(a: 1, a: 2)", "twice")] {
-        let src = format!("PACK t 1\n{OWN}Box.go on-setter t:\n  ALWAYS:\n    {body}\n");
-        let e = parse_full(&src).err().unwrap_or_else(|| panic!("{body} loaded"));
-        assert!(e.contains(want), "{body}: {e}");
-    }
-}
-
-#[test]
-fn a_constructor_outside_a_write_target_is_a_reasoned_error_not_a_crash() {
-    let pack = format!("PACK t 1\n{OWN}Box.g getter: Thing(kind: 'x')\n");
-    let mut f = Fields::goalgraph();
-    f.set_pack("t", &pack).unwrap();
-    let mut c = Core::new();
-    c.load("Box:a".into(), "Box".into(), Default::default(), None, 0.0);
-    let mut seq = 0;
-    f.rebuild(&mut c, 1.0, &mut seq);
-    assert_eq!(c.docs["Box:a"].props.get("g").cloned().unwrap_or(J::Null), J::Null);
-    let chain = f.why_chain(&c, "Box:a", "g");
-    assert!(chain[0]["reason"].as_str().unwrap().contains("constructor"), "{chain:?}");
-}
-
-#[test]
 fn print_and_parse_round_trip_a_constructor() {
     let src = format!("PACK t 1\n{OWN}Box.go on-setter t:\n  ALWAYS:\n    membrane::Chat:message[this.id]:response = Reply(text: this.t, n: 1)\n");
     let a = parse(&src).unwrap();
@@ -148,12 +99,3 @@ fn a_constructor_is_typed_as_its_class() {
     assert_eq!(infer_src("Voice(kind: 1 + 'a')", &[]).unwrap().1.len(), 1, "its arguments are typed for findings");
 }
 
-#[test]
-fn a_foreign_prefix_entity_gets_its_kinds_getters_at_once() {
-    // the kind stamp (`parents`) is set after the birth: the kind's getters must still be computed for what was just made
-    let pack = "PACK t 1\nVoice.shown getter: 'v:' + this.eid\nVoice.twice getter: this.n * 2\nBox.go on-setter t:\n  ALWAYS:\n    Config:x = Voice(n: 4)\n";
-    let (c, _) = run_with(pack, json!({}), &[]);
-    assert_eq!(p(&c, "Config:x")["parents"], json!(["cls:config", "cls:voice"]));
-    assert_eq!(p(&c, "Config:x")["shown"], json!("v:Config:x"), "{:?}", p(&c, "Config:x"));
-    assert_eq!(p(&c, "Config:x")["twice"], json!(8));
-}
