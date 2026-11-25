@@ -1,0 +1,24 @@
+-- WHO COMPETES, AND NEVER IN SILENCE (#1143, operator 2026-11-21): the first-write-wins rule of layers (docs/c1f-layers.md) is between SIBLINGS, the packs that stack on one class. A write from a pack that
+-- is not one of that class's layers (the door's `entity_write` is a setter of the `door_tools` pack) is an INPUT to the class, like a person's write: it claims nothing, and the class's own setters answer it
+-- normally (a setter may rewrite the property that fired it). When siblings really do compete and the skipped write is a setter rewriting its OWN trigger, the skip is not quiet: the entity carries a
+-- `refused` receipt that names the setter and the pack that won. Found on a seat: Memo's `fix` setter rewrote `a` and was skipped for hours because the door pack had written `a` first.
+-- Converted from tests/loud_guard_1143.rs. `trig` is loaded as the FIRST app (the root of trust), as `door_tools` is: a privileged pack may write any class.
+
+test a write from a pack that is not a layer of the class is an input and the classs setter may rewrite it
+list trig.packs .
+load probe2.c1f
+given Probe2:y {"a": "idle"}
+given Trig:t {"target": "Probe2:y", "tprop": "a"}
+write Trig:t.go = 1
+-- the `trig` pack wrote `a` (an input); `fix`, a layer of Probe2, rewrote it
+reads Probe2:y.a = "owed"
+-- nothing was refused
+reads Probe2:y.refused = null
+
+test when siblings compete a skipped rewrite of the setters own trigger leaves a receipt naming both
+load lower.c1f
+load upper.c1f
+given Probe5:y {"a": "idle"}
+write Probe5:y.a = "open"
+eval 'lowfix' in str(Probe5:y.refused) = true
+eval 'upper' in str(Probe5:y.refused) = true

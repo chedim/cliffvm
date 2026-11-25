@@ -1,0 +1,41 @@
+-- A write that creates an entity of a class the writing pack may not create is REFUSED WITH A RECEIPT (#1143, operator 2026-11-14): it used to be dropped silently (a view pack drawing `DomNode:...` with
+-- no loaded pack declaring DomNode did nothing, no message). The cases: a write to an EXISTING entity of a class no pack owns stays legal; creating one as an unprivileged pack is the silent case.
+-- Converted from tests/loud_1143.rs.
+
+test creating an entity of a class no pack declares is refused with a receipt naming entity class and pack
+load draw.c1f
+given Trig:t {}
+write Trig:t.go = 1
+absent Ghost:made
+eval 'Ghost:made' in str(Trig:t.refused) = true
+eval 'Ghost' in str(Trig:t.refused) = true
+eval 'draw' in str(Trig:t.refused) = true
+eval 'no loaded pack declares' in str(Trig:t.refused) = true
+
+test creating an entity of another packs class without the import is refused with a receipt
+load own.c1f
+load draw.c1f
+given Trig:t {}
+write Trig:t.mk = 1
+absent Cls:made
+eval 'Cls:made' in str(Trig:t.refused) = true
+eval 'draw' in str(Trig:t.refused) = true
+eval 'own' in str(Trig:t.refused) = true
+eval 'IMPORT own' in str(Trig:t.refused) = true
+
+test legal writes are unchanged
+load draw.c1f
+given Trig:t {}
+given Ghost:old {}
+-- an existing entity of a class no pack owns: written, no receipt
+write Trig:t.ex = 1
+reads Ghost:old.val = 1
+reads Trig:t.refused = null
+-- the person (outside writer) creates and writes any class
+given Ghost:person {}
+write Ghost:person.val = 2
+reads Ghost:person.val = 2
+-- a privileged pack creates a class no pack owns
+write Pack:draw.privileged = true
+write Trig:t.go = 2
+reads Ghost:made.val = 1

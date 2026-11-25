@@ -1,0 +1,5 @@
+PACK upper 1
+IMPORT lower 1
+Probe5.a on-setter upfix:
+  ALWAYS:
+    this.a = 'up'

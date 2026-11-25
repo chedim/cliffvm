@@ -1,0 +1,5 @@
+PACK trig 1
+Trig.kind getter: 'trig'
+Trig.go on-setter push:
+  ALWAYS:
+    (this.target).[this.tprop] = 'open'

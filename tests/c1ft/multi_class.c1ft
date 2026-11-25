@@ -1,0 +1,43 @@
+-- An entity of TWO extra classes at once (#1143). Its classes are the list in its `parents` property (`cls:<name>` ids, the ISA kinds): the getters of both apply, the setter of each fires (a kind's
+-- setter needs its ISA parent entity `cls:<name>`), and the list survives a journal replay. A `parents` write on an entity that already exists binds the getters of its kinds (they are bound at birth
+-- otherwise). Converted from tests/multi_class_1143.rs; what stays Rust there is the journal replay.
+
+test a parents write on an existing entity binds the getters and setters of both kinds
+PACK two 1
+Alpha.sa getter: 'alpha:' + str(this.n)
+Beta.sb getter: 'beta:' + str(this.n)
+Alpha.go_a on-setter run-a:
+  WHEN this.go_a == True:
+    this.did_a = True
+Beta.go_b on-setter run-b:
+  WHEN this.go_b == True:
+    this.did_b = True
+-- the ISA parent entities a kind's setter needs
+given cls:alpha {"name": "Alpha"}
+given cls:beta {"name": "Beta"}
+given Thing:x {"n": 3}
+-- no kind yet: no getter
+reads Thing:x.sa = null
+write Thing:x.parents = ["cls:alpha", "cls:beta"]
+-- both getters apply
+reads Thing:x.sa = "alpha:3"
+reads Thing:x.sb = "beta:3"
+write Thing:x.n = 4
+-- both follow a write
+reads Thing:x.sa = "alpha:4"
+reads Thing:x.sb = "beta:4"
+write Thing:x.go_a = true
+write Thing:x.go_b = true
+-- both setters fire
+reads Thing:x.did_a = true
+reads Thing:x.did_b = true
+
+-- The root class `Entity` is implicit (#1143): a getter on it applies to every entity, and a getter of the entity's own class beats it.
+test a getter on entity applies to every entity and a nearer class beats it
+load root.c1f
+load own_layer.c1f
+given Thing:x {"n": 1}
+given Own:z {}
+-- the implicit root class
+reads Thing:x.summary = "Thing Thing:x"
+reads Own:z.summary = "own"

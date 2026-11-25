@@ -1,6 +1,7 @@
 //! An entity of TWO extra classes at once (#1143). Its classes are the list in its `parents` property (`cls:<name>` ids, the ISA kinds): the
 //! getters of both apply, the setter of each fires (a kind's setter needs its ISA parent entity `cls:<name>`), and the list survives a
-//! journal replay. A `parents` write on an entity that already exists binds the getters of its kinds (they are bound at birth otherwise).
+//! journal replay. What the getters and setters do is tests/c1ft/multi_class.c1ft; what stays here is the replay.
+//! A `parents` write on an entity that already exists binds the getters of its kinds (they are bound at birth otherwise).
 use cliffvm::host::{Host, Options};
 use serde_json::{json, Map, Value as J};
 
@@ -17,34 +18,17 @@ fn fresh() -> Host {
 fn props(v: J) -> Map<String, J> { v.as_object().unwrap().clone() }
 
 #[test]
-fn a_parents_write_on_an_existing_entity_binds_the_getters_and_setters_of_both_kinds_and_replays() {
+fn the_class_list_survives_a_journal_replay() {
     let h = fresh();
-    h.born("cls:alpha", "cls", props(json!({"name": "Alpha"})), "person");     // the ISA parent entities a kind's setter needs
+    h.born("cls:alpha", "cls", props(json!({"name": "Alpha"})), "person");
     h.born("cls:beta", "cls", props(json!({"name": "Beta"})), "person");
     h.born("Thing:x", "Thing", props(json!({"n": 3})), "person");
-    assert_eq!(h.get("Thing:x", "sa"), J::Null, "no kind yet: no getter");
     h.write("Thing:x", "parents", json!(["cls:alpha", "cls:beta"]), "person");
-    assert_eq!((h.get("Thing:x", "sa"), h.get("Thing:x", "sb")), (json!("alpha:3"), json!("beta:3")), "both getters apply");
     h.write("Thing:x", "n", json!(4), "person");
-    assert_eq!((h.get("Thing:x", "sa"), h.get("Thing:x", "sb")), (json!("alpha:4"), json!("beta:4")), "both follow a write");
     h.write("Thing:x", "go_a", json!(true), "person");
     h.write("Thing:x", "go_b", json!(true), "person");
-    assert_eq!((h.get("Thing:x", "did_a"), h.get("Thing:x", "did_b")), (json!(true), json!(true)), "both setters fire");
     // a journal replay into a fresh engine gives the same entity
     let r = fresh();
     r.replay(&h.journal());
     assert_eq!(r.snapshot()["Thing:x"], h.snapshot()["Thing:x"]);
-}
-
-/// The root class `Entity` is implicit (#1143): a getter on it applies to every entity, and a getter of the entity's own class beats it.
-#[test]
-fn a_getter_on_entity_applies_to_every_entity_and_a_nearer_class_beats_it() {
-    let h = Host::open({ let mut o = Options::new(None); o.effects = false; o }).unwrap();
-    h.load_pack("root", "PACK root 1\nEntity.summary getter: this.cls + ' ' + this.eid\n").unwrap();
-    h.load_pack("own", "PACK own 1\nIMPORT root 1\nOwn.summary getter: 'own'\n").unwrap();
-    h.rebuild();
-    h.born("Thing:x", "Thing", props(json!({"n": 1})), "person");
-    h.born("Own:z", "Own", Map::new(), "person");
-    assert_eq!(h.get("Thing:x", "summary"), json!("Thing Thing:x"), "the implicit root class");
-    assert_eq!(h.get("Own:z", "summary"), json!("own"));
 }
