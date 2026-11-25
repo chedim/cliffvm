@@ -1,22 +1,22 @@
 -- `meta(eid)`: the metadata of an entity as a dict, names only, no values (#1143). Converted from tests/meta_1143.rs.
 -- `entity_read` is this dict printed: the class, the parents, the properties (a getter's value is not one), the getters and the setters of its classes.
 
--- test it names the class the properties the getters and the setters and prints no value
+test it names the class the properties the getters and the setters and prints no value
 PACK mt 1
 Thing.twice getter: this.n * 2
 Thing.go on-setter bump:
   ALWAYS:
     this.hit = 1
--- given Thing:t1 {"n": 4, "secret": "do not print"}
--- eval meta('Thing:t1')['class'] = "Thing"
--- eval meta('Thing:t1')['properties'] = ["n", "secret"]
--- eval meta('Thing:t1')['getters'] = ["twice"]
--- eval meta('Thing:t1')['setters'] = [{"prop": "go", "name": "bump"}]
--- eval 'do not print' in str(meta('Thing:t1')) = false
--- eval meta('Thing:t1')['parents'] is List = true
+given Thing:t1 {"n": 4, "secret": "do not print"}
+eval meta('Thing:t1')['class'] = "Thing"
+eval meta('Thing:t1')['properties'] = ["n", "secret"]
+eval meta('Thing:t1')['getters'] = ["twice"]
+eval meta('Thing:t1')['setters'] = [{"prop": "go", "name": "bump"}]
+eval 'do not print' in str(meta('Thing:t1')) = false
+eval meta('Thing:t1')['parents'] is List = true
 
--- test a text that names no entity is a null
--- eval meta('Thing:nope') = null
+test a text that names no entity is a null
+eval meta('Thing:nope') = null
 
--- test an entity that is not there says so
--- eval meta('Thing:nope') = error: Thing:nope does not exist
+test an entity that is not there says so
+eval meta('Thing:nope') = error: Thing:nope does not exist
