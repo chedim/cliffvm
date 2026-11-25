@@ -1,0 +1,108 @@
+-- The banner port's built-ins (the operator, 2026-11-10: string built-ins as plain functions, no new syntax): lower, strip, startswith, lines, words, join, head; sort_by, fit; localtime.
+-- Converted from tests/builtins_text.rs.
+
+test strings
+let t = '  Hello World\nsecond line  '
+eval lower(t) = "  hello world\nsecond line  "
+eval strip(t) = "Hello World\nsecond line"
+eval startswith(strip(t), 'Hello') = true
+eval lines(strip(t)) = ["Hello World", "second line"]
+eval words(t) = ["Hello", "World", "second", "line"]
+eval join(words(t), ' ') = "Hello World second line"
+eval head('abcdef', 3) = "abc"
+eval head('ab', 3) = "ab"
+eval head('héllo', 2) = "hé"
+
+test sort_by orders rows by a key
+let r = [{'n': 'a', 'ts': 2}, {'n': 'b', 'ts': 9}, {'n': 'c', 'ts': None}, {'n': 'd', 'ts': 5}]
+eval [x['n'] for x in sort_by(r, 'ts', True)] = ["b", "d", "a", "c"]
+eval [x['n'] for x in sort_by(r, 'ts', False)] = ["c", "a", "d", "b"]
+
+test fit keeps the most important lines in budget in page order
+-- each line costs len(text) + 1; rows are {text, prio (lower first), slot (page order)}
+let r = [{'text': 'aaaa', 'prio': 2, 'slot': 1}, {'text': 'bbbbbbbb', 'prio': 0, 'slot': 3}, {'text': 'cc', 'prio': 1, 'slot': 2}, {'text': 'ddddddddd', 'prio': 3, 'slot': 0}]
+eval fit(r, 16) = ["cc", "bbbbbbbb"]
+eval fit(r, 17) = ["aaaa", "cc", "bbbbbbbb"]
+
+test localtime gives the local calendar
+let lt = localtime(1800000000)
+eval [k in keys(lt) for k in ['year', 'month', 'day', 'hour', 'minute', 'date', 'clock', 'zone', 'day_number']] = [true, true, true, true, true, true, true, true, true]
+eval localtime(1800000000 + 86400)['day_number'] - lt['day_number'] = 1
+
+test clip and ago match the banner
+eval clip('  a   b  ', 10) = "a b"
+eval clip('abcdefghijkl', 8) = "abcde..."
+eval ago(1799999940.0, 1800000000.0) = "just now"
+eval ago(1799999400.0, 1800000000.0) = "10 min ago"
+eval ago(1799992800.0, 1800000000.0) = "2h ago"
+eval len(ago(1797408000.0, 1800000000.0)) = 10
+eval ago(None, 5) = ""
+
+test fit shows a groups heading once with its first kept line
+let r = [{'text': '- a', 'prio': 3, 'slot': 501, 'head': 'DECIDED:', 'head_slot': 500}, {'text': '- b', 'prio': 3, 'slot': 502, 'head': 'DECIDED:', 'head_slot': 500}, {'text': 'x', 'prio': 0, 'slot': 100}]
+eval fit(r, 100) = ["x", "DECIDED:", "- a", "- b"]
+eval fit(r, 15) = ["x", "DECIDED:", "- a"]
+eval fit(r, 10, 5) = ["x"]
+eval head([1, 2, 3], 2) = [1, 2]
+eval epoch('2026-11-10T10:00:00Z') = 1794304800.0
+
+test concat joins lists and plus stays vector addition
+eval concat([1], [2, 3], None, ['a']) = [1, 2, 3, "a"]
+eval [1, 2] + [3, 4] = [4.0, 6.0]
+
+test unspeak, group_by, distinct, before
+eval unspeak('[user#admin: admin]\nship it') = "ship it"
+eval unspeak('[user: Ann] [HA user: Bo]\nhi') = "hi"
+eval unspeak('[HA user: Bo]\n[user#x: y]\nhi') = "hi"
+eval unspeak('no speaker') = "no speaker"
+eval unspeak('[user#admin: admin] had more thoughts on 1043') = "had more thoughts on 1043"
+eval unspeak('[user: Ann]  hi\nthere') = "hi\nthere"
+let r = [{'k': 'a', 'v': 1}, {'k': 'b', 'v': 2}, {'k': 'a', 'v': 3}]
+eval group_by(r, 'k') = [{"key": "a", "rows": [{"k": "a", "v": 1}, {"k": "a", "v": 3}]}, {"key": "b", "rows": [{"k": "b", "v": 2}]}]
+eval distinct([3, 1, 3, 2, 1]) = [3, 1, 2]
+eval before('f:membrane/x.py', ':') = "f"
+eval before('plain', ':') = "plain"
+eval after('f:membrane/x.py', ':') = "membrane/x.py"
+
+test a long string literal and long logic both evaluate
+let a = 1
+eval len('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx') = 900
+eval a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a = 220
+
+test a pending read is an empty list to every list builtin
+-- #1065 (2026-11-10): a getter's sql()/jsonl() reads None until its rows land; None is the empty list everywhere, as FOR has it.
+let pend = None
+eval group_by(pend, 'k') = []
+eval sort_by(pend, 'k') = []
+eval pluck(pend, 'k') = []
+eval distinct(pend) = []
+eval fit(pend, 10, 0) = []
+eval join(pend, ',') = ""
+
+test replace swaps every occurrence
+eval replace('- **Code** is a **tree**', '**', '') = "- Code is a tree"
+eval replace('a-b-c', '-', ' ') = "a b c"
+eval replace('abc', '', 'x') = "abc"
+
+test json of text that is not json is an error so a default is chosen by is Error
+-- a body that is not JSON must not abort the getter: it is an Error (a null to every old route), and `{} if j is Error else j` is the idiom; `or` never hides an Error (operator 2026-11-13)
+let body = 'nope'
+eval json(body) = null
+eval {} if json(body) is Error else json(body) = {}
+eval json(body) is Error = true
+eval json(body) or {} = null
+eval json('{"a": 1}') = {"a": 1}
+eval json('') is Error = true
+eval json(None) = null
+
+test tail is the mirror of head
+eval tail('abcdef', 3) = "def"
+eval tail('ab', 3) = "ab"
+eval tail('héllo', 2) = "lo"
+eval tail([1, 2, 3], 2) = [2, 3]
+
+test group_by keeps first-seen order and python equality with text and number keys
+-- #1143 (w36): group_by finds a text key's group through a hash; every other key still groups by Python equality (1 == 1.0, a text never equals a number), first-seen order.
+let r = [{'k': '1', 'v': 1}, {'k': 1, 'v': 2}, {'k': '1', 'v': 3}, {'k': 1.0, 'v': 4}, {'k': None, 'v': 5}, {'k': '', 'v': 6}, {'k': None, 'v': 7}]
+eval [g['key'] for g in group_by(r, 'k')] = ["1", 1, null, ""]
+eval [[x['v'] for x in g['rows']] for g in group_by(r, 'k')] = [[1, 3], [2, 4], [5, 7], [6]]

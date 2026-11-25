@@ -1,0 +1,50 @@
+-- A bare id reads the seat's own namespace twin when no entity holds the bare id (#1143). Converted from tests/bare_twin_1143.rs.
+
+test a bare id reads the entity held under the seat's prefix
+load bt.c1f
+given membrane::Thing:t1 {"n": 4}
+given Reader:r1 {"target": "Thing:t1"}
+reads Reader:r1.one = 4
+reads Reader:r1.lit = 4
+reads Reader:r1.kind = "Thing"
+reads Reader:r1.props = ["n"]
+
+test a list of bare ids reads each one
+load bt.c1f
+given membrane::Thing:a {"n": 1}
+given Thing:b {"n": 2}
+given Reader:r2 {"targets": ["Thing:a", "Thing:b"]}
+reads Reader:r2.many = [1, 2]
+
+test the bare entity wins when both exist
+load bt.c1f
+given membrane::Thing:t1 {"n": 4}
+given Thing:t1 {"n": 9}
+given Reader:r3 {"target": "Thing:t1"}
+reads Reader:r3.one = 9
+
+test an id found in neither place is absent as before
+load bt.c1f
+given Reader:r4 {}
+reads Reader:r4.gone = true
+
+test a getter reading the bare id follows the twin when it changes
+load bt.c1f
+given membrane::Thing:t1 {"n": 4}
+given Reader:r5 {"target": "Thing:t1"}
+reads Reader:r5.one = 4
+write membrane::Thing:t1.n = 5
+reads Reader:r5.one = 5
+
+test a getter finds the twin when it is born later
+load bt.c1f
+given Reader:r6 {"target": "Thing:late"}
+reads Reader:r6.one = null
+given membrane::Thing:late {"n": 7}
+reads Reader:r6.one = 7
+
+test another namespace is never mapped
+load bt.c1f
+given membrane::Thing:t1 {"n": 4}
+given Reader:r7 {"target": "other::Thing:t1"}
+reads Reader:r7.one = null
