@@ -1,0 +1,156 @@
+-- `Error` in the operators (#1143, docs/c1f-error.md section (b), operator decisions 2026-11-13). An Error is contagious everywhere a value is USED and is never hidden by a default:
+-- arithmetic, `-x`, `x[i]`, `x.a`, calls, string `+`, comparisons, `not`, `and`, `or`, a condition (`if`, a comprehension's `if`) all give that Error. `is`, `why(x)` and `x == None` read it
+-- without propagating it. A list or dict holding an Error is not an Error; the element stays one inside the evaluation. Converted from tests/error_ops_1143.rs.
+-- `why(<expr>)` is the reason of the Error the expression gives (null for anything that is not an Error), so each line says WHICH error came out.
+
+test arithmetic, negation, index, attribute and calls give that error
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval why(e + 1) = "boom"
+eval why(1 + e) = "boom"
+eval why(e * 2) = "boom"
+eval why(e - e) = "boom"
+eval why(e / 2) = "boom"
+eval why(-e) = "boom"
+eval why('x' + e) = "boom"
+eval why(e + 'x') = "boom"
+eval why(e[0]) = "boom"
+eval why([1][e]) = "boom"
+eval why(e['k']) = "boom"
+eval why(e.name) = "boom"
+eval why(abs(e)) = "boom"
+eval why(len(e)) = "boom"
+eval why(str(e)) = "boom"
+eval why(max(1, e)) = "boom"
+eval why(join(e, ',')) = "boom"
+eval why(sort_by(e, 'k')) = "boom"
+eval why(Int(e)) = "boom"
+eval why(lower(e)) = "boom"
+eval why(${e}['x']) = "boom"
+eval why([1, 2] + e) = "boom"
+
+test an error wins over a plain null and the first error wins
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval why(n + e) = "boom"
+eval why(p + e) = "boom"
+eval why(e + n) = "boom"
+eval why(e + f) = "boom"
+eval why(f + e) = "second"
+eval why(max(n, p, f, e)) = "second"
+
+test a plain null still propagates as a null
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval n + 1 == None = true
+eval startswith(why(n + 1), 'absent') = true
+eval len(n) = 0
+
+test comparisons over an error give the error, not a bool
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval why(e == 3) = "boom"
+eval why(3 == e) = "boom"
+eval why(e != 3) = "boom"
+eval why(e < 1) = "boom"
+eval why(1 >= e) = "boom"
+eval why(e in [1]) = "boom"
+eval why(1 in e) = "boom"
+eval why(1 not in e) = "boom"
+eval why(e == e) = "boom"
+eval why(1 < e < 3) = "boom"
+eval why(e == f) = "boom"
+
+test x equals none is false for an error and never an error
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval e == None = false
+eval e != None = true
+eval None == e = false
+eval None != e = true
+eval e == p = false
+eval n == None = true
+eval p == None = true
+
+test not, and, or over an error give the error and a default never hides it
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval why(not e) = "boom"
+eval why(e or 'default') = "boom"
+eval why(n or e) = "boom"
+eval why(e and 1) = "boom"
+eval why(1 and e) = "boom"
+eval why(e or e) = "boom"
+-- an operand that is not reached is not evaluated
+eval 'a' or e = "a"
+eval False and e = false
+-- a plain null still takes the default
+eval n or 'd' = "d"
+eval p or 'd' = "d"
+
+test a condition over an error is that error, not the else arm
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval why(1 if e else 2) = "boom"
+eval why([x for x in [1, 2] if e]) = "boom"
+eval why([x for x in e]) = "boom"
+eval (1 if e is Error else 2) == 1 = true
+eval (1 if e is not Error else 2) == 2 = true
+
+test is and why read an error without propagating
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval e is Error = true
+eval not (e is Error) = false
+eval why(e) == 'boom' = true
+eval [e][0] is Error = true
+
+test a list or dict holding an error is not an error and the element stays one
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval [1, e] is List = true
+eval len([1, e]) == 2 = true
+eval [1, e][1] is Error = true
+eval {'a': e}['a'] is Error = true
+eval {'a': e} is Dict = true
+eval why([1, e][1]) == 'boom' = true
+-- the idiom to drop failed items
+eval len([x for x in [1, e, 3] if not (x is Error)]) = 2
+-- a comprehension's element may be an Error
+eval [v is Error for v in [Error('bad ' + str(x)) for x in [1, 2]]] = [true, true]
+
+test a local may hold an error and be tested
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+let bad = Error('bad')
+let copy = e
+eval bad is Error = true
+eval why(bad + 1) = "bad"
+eval why(copy) = "boom"
+
+test an entity key that is an error is that error
+let e = Error('boom')
+let f = Error('second')
+let n = None
+let p = None('pending: read(/a)')
+eval why(Goal:board[e]) = "boom"
