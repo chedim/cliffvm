@@ -1,0 +1,5 @@
+PACK ents 1
+Box.open getter: [t for t in instances('Thing') if t.on]
+Box.first getter: head([t for t in instances('Thing') if t.on], 1)
+Box.names getter: [t.name for t in this.open]
+Box.count getter: len(this.open)

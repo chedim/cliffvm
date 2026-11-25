@@ -1,0 +1,51 @@
+-- A getter may store entity values (a list of them, a single one, nested in a dict): an entity is kept as a reference `{"$ref": "<eid>"}` and reads back as the entity, so another getter can iterate
+-- it and read its fields. Setters write entity values the same way. Converted from tests/getter_entity_values.rs (the pack is ents.c1f).
+-- The Rust test told the engine of a changed entity through the host's load; here it is a write.
+
+test a getter stores a list of entities as references
+load ents.c1f
+given Thing:a {"name": "a", "on": true}
+given Thing:b {"name": "b", "on": false}
+given Thing:c {"name": "c", "on": true}
+given Box:x {}
+reads Box:x.open = [{"$ref": "Thing:a"}, {"$ref": "Thing:c"}]
+reads Box:x.first = [{"$ref": "Thing:a"}]
+
+test another getter reads the stored entities back as entities
+load ents.c1f
+given Thing:a {"name": "a", "on": true}
+given Thing:b {"name": "b", "on": false}
+given Thing:c {"name": "c", "on": true}
+given Box:x {}
+reads Box:x.names = ["a", "c"]
+reads Box:x.count = 2
+
+test the stored list follows the entities
+load ents.c1f
+given Thing:a {"name": "a", "on": true}
+given Thing:b {"name": "b", "on": false}
+given Thing:c {"name": "c", "on": true}
+given Box:x {}
+reads Box:x.count = 2
+write Thing:b.on = true
+reads Box:x.count = 3
+
+test a setter writes a list of entities and a getter reads it back
+load ents.c1f
+PACK sets 1
+IMPORT ents 1
+Box.fill on-setter fill:
+  ALWAYS:
+    this.chosen = [t for t in instances('Thing') if t.on]
+    this.one = head([t for t in instances('Thing') if t.on], 1)
+    this.both = {'first': head([t for t in instances('Thing') if t.on], 1), 'n': len([t for t in instances('Thing') if t.on])}
+Box.chosen_names getter: [t.name for t in this.chosen]
+given Thing:a {"name": "a", "on": true}
+given Thing:b {"name": "b", "on": false}
+given Thing:c {"name": "c", "on": true}
+given Box:x {}
+write Box:x.fill = 1
+reads Box:x.chosen = [{"$ref": "Thing:a"}, {"$ref": "Thing:c"}]
+reads Box:x.one = [{"$ref": "Thing:a"}]
+reads Box:x.both = {"first": [{"$ref": "Thing:a"}], "n": 2}
+reads Box:x.chosen_names = ["a", "c"]

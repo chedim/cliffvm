@@ -1,0 +1,91 @@
+-- A write whose PROPERTY NAME is computed (#1143, the MCP door's entity_write): `<target>.[<expr>] = value`. The expression gives the property's name (non-empty text; anything else writes
+-- nothing). Everything else is a write as before: the target's class must be one the pack owns or imports (a receipt `refused` otherwise), and the entity is created by the creation path.
+-- Converted from tests/dynamic_prop_1143.rs; what stays Rust there is the print round trip.
+
+test the property name is an expression
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    (this.target).[this.field] = this.v
+given Box:a {"target": "Thing:t1", "field": "color", "v": {"a": [1, 2]}}
+given Thing:t1 {}
+write Box:a.go = 1
+reads Thing:t1.color = {"a": [1, 2]}
+
+test a name built from parts and an entity literal target
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:t1.['c_' + this.field] = 7
+given Box:a {"field": "x"}
+given Thing:t1 {}
+write Box:a.go = 1
+reads Thing:t1.c_x = 7
+
+test an empty name writes nothing
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:t1.[this.field] = 7
+given Box:a {"field": ""}
+given Thing:t1 {}
+write Box:a.go = 1
+eval meta('Thing:t1')['properties'] = []
+
+test a number as a name writes nothing
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:t1.[this.field] = 7
+given Box:a {"field": 5}
+given Thing:t1 {}
+write Box:a.go = 1
+eval meta('Thing:t1')['properties'] = []
+
+test a null as a name writes nothing
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:t1.[this.field] = 7
+given Box:a {"field": null}
+given Thing:t1 {}
+write Box:a.go = 1
+eval meta('Thing:t1')['properties'] = []
+
+test a list as a name writes nothing
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:t1.[this.field] = 7
+given Box:a {"field": ["a"]}
+given Thing:t1 {}
+write Box:a.go = 1
+eval meta('Thing:t1')['properties'] = []
+
+test it creates the target like any write
+PACK t 1
+Thing.shown getter: this.eid
+Box.go on-setter t:
+  ALWAYS:
+    Thing:new1.[this.field] = 'v'
+given Box:a {"field": "k"}
+write Box:a.go = 1
+reads Thing:new1.k = "v"
+
+test a class another pack owns is refused as a receipt not written
+load own.c1f
+PACK t 1
+Box.go on-setter t:
+  ALWAYS:
+    Cell:c1.[this.field] = 'v'
+given Box:a {"field": "k"}
+given Cell:c1 {}
+write Box:a.go = 1
+reads Cell:c1.k = null
+eval 'IMPORT own' in str(Box:a.refused) = true
