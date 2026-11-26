@@ -424,7 +424,7 @@ impl P {
         r
     }
     fn expr_inner(&mut self) -> Result<Node, Err> {
-        if self.is_kw("lambda") || self.is_kw("await") || self.is_kw("yield") { return Err("not allowed in an expression: Lambda".into()); }
+        if self.is_kw("lambda") || self.is_kw("await") || self.is_kw("yield") { return Err("not allowed in an expression: Lambda (there are no functions: write a comprehension [f(x) for x in xs], or sort_by(rows, key))".into()); }
         let e = self.or_test()?;
         if !self.is_kw("if") { return Ok(e); }
         self.next();
@@ -662,10 +662,10 @@ impl P {
                 let mut v = Vec::new();
                 while !self.is_p("}") {
                     let k = self.expr()?;
-                    if !self.is_p(":") { return Err("not allowed in an expression: Set".into()); }
+                    if !self.is_p(":") { return Err("not allowed in an expression: Set (use a list [a, b]; distinct(list) drops the repeats)".into()); }
                     self.next();
                     let val = self.expr()?;
-                    let key = match &k { Node::Const(V::Str(s)) => s.clone(), _ => return Err("a dict's keys are literal strings".into()) };
+                    let key = match &k { Node::Const(V::Str(s)) => s.clone(), _ => return Err("a dict's keys are literal strings: write {'a': v}; a computed key is read as d[k]".into()) };
                     v.push((key, val));
                     if !self.is_p("}") { self.expect(",")?; }
                 }
