@@ -1,0 +1,44 @@
+-- Every refusal says what was refused and the form that works (#1143, the sweep of 2026-11-26: the remedy is part of the text). The first lines are the messages the sweep found unhelpful in expr.rs; each asserts the part of the text that names the remedy.
+-- This file is written BEFORE the messages are: it fails until they are.
+
+test an operator the language does not have names the arithmetic it has
+eval 7 // 2 = error: arithmetic is + - * /
+eval 7 % 2 = error: arithmetic is + - * /
+eval 2 ** 3 = error: arithmetic is + - * /
+eval [1, 2] @ [3, 4] = error: dot(a, b)
+
+test a unary plus or tilde is told what to write
+eval +5 = error: write the value itself
+eval ~5 = error: use `not`
+
+test a call that is not a built-in says so and says there are no methods
+eval frobnicate(1) = error: is not a built-in function
+eval 'abc'.upper() = error: there are no methods
+eval len(x=1) = error: arguments are positional
+
+test a keyword as a value, a lone bracket and two values in a row say what is wrong
+eval 1 2 = error: two values in a row
+eval (1)) = error: closing bracket with no opener
+eval 1 & 2 = error: write and / or
+
+test an attribute on something that is not an entity names the key form
+eval {'a': 1}.a = error: d['a']
+
+test a value of the wrong kind is named by its kind, not by the engine's debug dump
+eval 'a' * 2 = error: got a text
+eval len(5) = error: got a number
+eval [x for x in 5] = error: runs over a list, got a number
+eval abs('a') = error: got a text
+eval lower([1]) = error: got a list
+
+test min and max say what they take
+eval min() = error: min(xs) takes a list
+eval max([]) = error: guard it
+eval None(1, 2) = error: at most one reason
+
+test vectors that do not line up say the lengths
+eval dot([1, 2], [1]) = error: have 2 and 1 numbers
+eval [1, 2, 3] + [1, 2] = error: do not line up
+
+test await and yield are not called a lambda
+eval await x = error: do not exist here
