@@ -1,0 +1,5 @@
+PACK lower 1
+Probe5.kind getter: 'p5'
+Probe5.a on-setter lowfix:
+  ALWAYS:
+    this.a = 'low'

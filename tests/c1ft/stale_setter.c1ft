@@ -1,0 +1,62 @@
+-- A setter sees the getters as they were BEFORE the write that fired it (the engine's rule). A setter that reads a getter which depends on its own trigger property reads a stale value:
+-- the loader refuses it and says what to do instead. Converted from tests/stale_setter.rs.
+
+test a setter reading a getter of its own trigger is refused with the fix
+PACK t 1
+Light.shade getter: 'dark' if this.level < 3 else 'bright'
+Light.level on-setter note:
+  WHEN this.shade == 'bright':
+    this.note = 'bright now'
+error: stale
+
+test the refusal names the getter the trigger and the fix
+PACK t 1
+Light.shade getter: 'dark' if this.level < 3 else 'bright'
+Light.level on-setter note:
+  WHEN this.shade == 'bright':
+    this.note = 'bright now'
+error: on-setter on Light.shade
+
+test the refusal names the getter
+PACK t 1
+Light.shade getter: 'dark' if this.level < 3 else 'bright'
+Light.level on-setter note:
+  WHEN this.shade == 'bright':
+    this.note = 'bright now'
+error: Light.shade
+
+test the dependency may run through other getters
+PACK t 1
+Light.a getter: this.level + 1
+Light.b getter: this.a * 2
+Light.level on-setter s:
+  ALWAYS:
+    this.out = this.b
+error: Light.b
+
+test acting from a setter on the getter itself is fine
+PACK t 1
+Light.shade getter: 'dark' if this.level < 3 else 'bright'
+Light.shade on-setter note:
+  WHEN this.shade == 'bright':
+    this.note = 'bright now'
+given Light:a {"level": 5}
+exists Light:a
+
+test a getter that does not read the trigger is fine
+PACK t 1
+Light.tint getter: str(this.hue) + '!'
+Light.level on-setter s:
+  WHEN this.tint == 'x!':
+    this.note = 1
+given Light:a {"hue": "x"}
+exists Light:a
+
+test a getter of another class is not this rule
+PACK t 1
+Lamp.shade getter: 'dark' if this.level < 3 else 'bright'
+Light.level on-setter s:
+  WHEN this.lamp == 1:
+    this.note = 1
+given Light:a {}
+exists Light:a

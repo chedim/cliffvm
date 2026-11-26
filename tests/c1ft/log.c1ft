@@ -1,0 +1,17 @@
+-- Converted from tests/log_1143.rs; what stays Rust there is what c1ft cannot say (the step budget, the reserved names, the f32 bit patterns).
+
+test log says why on a number that is not positive or on a non number
+eval log(0) = error: log
+eval log(0) = error: positive
+eval log(-1) = error: log
+eval log(-1) = error: positive
+eval log(-0.5) = error: log
+eval log(-0.5) = error: positive
+eval log('e') = error: log
+eval log('e') = error: number
+eval log([1]) = error: log
+eval log([1]) = error: number
+eval log(True) = error: log
+eval log(True) = error: number
+eval log() = error: log
+eval log(1, 2) = error: log

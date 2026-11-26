@@ -1,0 +1,150 @@
+-- `Error` in the field (#1143, docs/c1f-error.md section (c), operator decisions 2026-11-13): a derived Error is stored as a plain null with its kind in `Core.why` (so the old routes see null); a getter
+-- reading an Error returns the same Error unchanged; a WHEN over an Error is that Error (it does not fall through to the next arm); a setter that writes an Error is refused with a `refused` receipt.
+-- Converted from tests/error_store_1143.rs; what stays Rust there is the assertion on `Core.why`, the engine's side map of null notes.
+
+test a getter that makes an error stores a plain null and reads back as an error
+PACK er 1
+Box.bad getter: Error('no such file; make it first')
+Box.nul getter: None('not applicable')
+Box.is_bad getter: this.bad is Error
+Box.is_nul getter: this.nul is Error
+Box.bad_none getter: this.bad == None
+Box.nul_none getter: this.nul == None
+Box.bad_why getter: why(this.bad)
+Box.nul_why getter: why(this.nul)
+given Box:a {}
+-- stored, an Error is a plain null: the old routes see null
+reads Box:a.bad = null
+reads Box:a.is_bad = true
+reads Box:a.is_nul = false
+-- `x == None` is False for an Error
+reads Box:a.bad_none = false
+reads Box:a.nul_none = true
+reads Box:a.bad_why = "no such file; make it first"
+reads Box:a.nul_why = "not applicable"
+
+test a getter reading an error returns the same error unchanged down a chain
+PACK er 1
+Box.a getter: Error('root cause; fix the root')
+Box.b getter: this.a + 1
+Box.c getter: this.b * 2
+Box.d getter: [this.c, 1][0]
+Box.cw getter: why(this.c)
+Box.dw getter: why(this.d)
+Box.cis getter: this.c is Error
+Box.dis getter: this.d is Error
+Box.dflt getter: this.c or 'default'
+Box.dflt_is getter: this.dflt is Error
+given Box:a {}
+-- the same reason all the way: no via chain
+reads Box:a.cw = "root cause; fix the root"
+reads Box:a.dw = "root cause; fix the root"
+reads Box:a.cis = true
+reads Box:a.dis = true
+-- `or` is the default operator and never hides an Error
+reads Box:a.dflt_is = true
+reads Box:a.dflt = null
+
+test an error goes when its input moves
+PACK er 1
+Box.q getter: Error('no price; set price') if this.price == None else this.price
+Box.qis getter: this.q is Error
+Box.qn getter: this.q == None
+given Box:a {}
+reads Box:a.qis = true
+write Box:a.price = 5
+reads Box:a.q = 5
+reads Box:a.qis = false
+write Box:a.price = null
+-- back to the failure when the input goes again
+reads Box:a.qis = true
+
+test a when over an error is that error and does not fall through
+PACK er 1
+Box.bad getter: Error('boom')
+Box.v getter:
+  WHEN this.bad: 'yes'
+  ELSE: 'no'
+Box.vis getter: this.v is Error
+Box.vw getter: why(this.v)
+Box.u getter:
+  WHEN this.bad is Error: 'caught'
+  ELSE: 'fine'
+given Box:a {}
+reads Box:a.vis = true
+reads Box:a.v = null
+reads Box:a.vw = "boom"
+-- a WHEN that asks `is Error` is no problem
+reads Box:a.u = "caught"
+
+test a when over an error in a layered getter is that error not the next arm
+load errstore/base.c1f
+PACK upper 1
+IMPORT base 1
+Light.word getter WHEN this.bad: 'never'
+given Light:a {"level": 0}
+-- not 'off': the arm cannot be chosen
+reads Light:a.word = null
+-- the failure is in the entity's `failed`
+reads Light:a.failed = {"bad": "layer boom", "word": "layer boom"}
+
+test the failure lives in the entitys failed and a null keeps no failure
+PACK p 1
+Light.bad getter: Error('x broke')
+Light.nul getter: None('x absent')
+given Light:a {"level": 0}
+reads Light:a.failed = {"bad": "x broke"}
+eval why(Light:a.nul) = "x absent"
+
+test a setter that writes an error is refused with a receipt and the old value stays
+PACK er 1
+Box.go on-setter run:
+  ALWAYS:
+    this.out = Error('would hide a failure')
+given Box:a {"out": "kept"}
+write Box:a.go = true
+-- nothing is stored, the old value stays
+reads Box:a.out = "kept"
+eval startswith(Box:a.refused, 'refused:') = true
+eval 'would hide a failure' in Box:a.refused = true
+eval 'never stored' in Box:a.refused = true
+
+test a setter writing a value that is a plain null is not refused
+PACK er 1
+Box.go on-setter run:
+  ALWAYS:
+    this.out = None('not yet')
+given Box:a {"out": "old"}
+write Box:a.go = true
+reads Box:a.out = null
+reads Box:a.refused = null
+
+test a setters condition over an error stops the setter it does not fall through to else
+PACK er 1
+Box.bad getter: Error('cond boom')
+Box.go on-setter run:
+  WHEN this.bad:
+    this.out = 'yes'
+  ELSE:
+    this.out = 'no'
+given Box:a {}
+write Box:a.go = true
+-- neither arm ran
+reads Box:a.out = null
+eval 'cond boom' in Box:a.refused = true
+
+test an error inside a list or dict is a plain null across a store and an error inside the evaluation
+PACK er 1
+Box.l getter: [1, Error('item broke'), 3]
+Box.in_eval getter: [1, Error('item broke')][1] is Error
+Box.stored_is getter: this.l[1] is Error
+Box.stored_none getter: this.l[1] == None
+Box.n getter: len([x for x in [1, Error('x'), 3] if not (x is Error)])
+given Box:a {}
+-- the old routes see a plain null
+reads Box:a.l = [1, null, 3]
+reads Box:a.in_eval = true
+-- across a store the element is a plain null
+reads Box:a.stored_is = false
+reads Box:a.stored_none = true
+reads Box:a.n = 2

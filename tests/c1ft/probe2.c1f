@@ -1,0 +1,5 @@
+PACK probe2 1
+Probe2.kind getter: 'probe2'
+Probe2.a on-setter fix:
+  WHEN this.a == 'open':
+    this.a = 'owed'

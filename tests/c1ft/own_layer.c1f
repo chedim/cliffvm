@@ -1,0 +1,3 @@
+PACK own_layer 1
+IMPORT root 1
+Own.summary getter: 'own'

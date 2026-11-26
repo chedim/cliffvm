@@ -1,0 +1,2 @@
+PACK root 1
+Entity.summary getter: this.cls + " " + this.eid

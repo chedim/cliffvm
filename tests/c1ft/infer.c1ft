@@ -1,0 +1,86 @@
+-- Static type inference over c1f getters (#1143, operator's design 2026-11-12): a REPORT, it enforces nothing. A getter's type follows from its expression and the types of what it reads. Plain properties written from outside are untyped edges (Any). Nulls propagate like SQL's; `x or d` strips the null; `Int(x)` is a checked cast. Converted from tests/infer.rs (the expression-level tests); what stays Rust there is the per-pack inference (getter tables, setters, cycles).
+
+test any plus a number is a nullable number
+type n + 1 with n: Any = "Num?"
+type 1 + n with n: Any = "Num?"
+type n + n with n: Any = "Any"
+
+test arithmetic on known numbers
+type 1 + 2 = "Int"
+type 1 - 2 * 3 = "Int"
+type 1 + 2.5 = "Float"
+type 1 / 2 = "Float"
+type n + 1 with n: Int? = "Int?"
+type 'a' + 'b' = "Text"
+type -n with n: Int = "Int"
+type -n with n: Float? = "Float?"
+type v + 1 with v: List(Float) = "List(Float)"
+
+test len is an int whatever it is given
+type len(x) with x: Any = "Int"
+type len(x) with x: Text? = "Int"
+type len([1]) = "Int"
+
+test or strips the null of what comes before
+type x or 'd' with x: Text? = "Text"
+type x or None with x: Text? = "Text?"
+type x or 1 with x: Text? = "Int|Text"
+type x or 'd' with x: Any = "Any"
+type x and 'a' with x: Bool = "Bool|Text"
+
+test casts are checked and give an error unless the input already is that type
+-- a failed cast is an Error (#1143), a null stays the null it was
+-- sound but not flow-sensitive: Int(v) failing does not tell the model that Text(v) then works; `or` never hides the Error
+type Int(v) with v: Any = "(Int|Error)?"
+type Int(v) with v: Int = "Int"
+type Int(v) with v: Text = "Int|Error"
+type Text(v) with v: Text = "Text"
+type Num(v) with v: Any = "(Num|Error)?"
+type Int(v) or Text(v) with v: Int|Text = "Int|Text|Error"
+
+test literals and comprehensions
+type {'a': 1} = "Dict"
+type [x for x in l] with l: List(Int) = "List(Int)"
+type [x for x in l] with l: Any = "List(Any)"
+type [x + 1 for x in l] with l: List(Int) = "List(Int)"
+type [1, 2] = "List(Int)"
+type [1, 'a'] = "List(Int|Text)"
+type [] = "List(Never)"
+type [] or ['a'] = "List(Text)"
+type None = "None"
+type True = "Bool"
+type 1 if c else 'a' with c: Bool = "Int|Text"
+type 1 if c else None with c: Bool = "Int?"
+
+test comparisons are bools and a null test is one
+type x == None with x: Any = "Bool"
+type x < 3 with x: Int = "Bool"
+type 'a' in l with l: List(Text) = "Bool"
+type not x with x: Any = "Bool"
+findings x == None with x: Any = 0
+
+test indexing
+type l[0] with l: List(Text) = "Text?"
+type d['k'] with d: Dict = "Any"
+type l[0] or 'd' with l: List(Text) = "Text"
+
+test builtins have signatures
+type lower(x) with x: Any = "Text"
+type words(x) with x: Text = "List(Text)"
+type startswith(x, 'a') with x: Text = "Bool"
+type join(l, ',') with l: List(Text) = "Text"
+type sort_by(l, 'k') with l: List(Dict) = "List(Dict)"
+type concat(a, b) with a: List(Int), b: List(Text) = "List(Int|Text)"
+type head(l, 2) with l: List(Int) = "List(Int)"
+type head(t, 2) with t: Text = "Text"
+type str(x) with x: Any = "Text"
+type num(x) with x: Text = "Num?"
+type norm(v) with v: List(Float) = "Float"
+type unit(v) with v: List(Float) = "List(Float)"
+type max(1, 2.5) = "Num"
+type max(l) with l: List(Int) = "Int"
+type abs(n) with n: Int = "Int"
+type instances('Boot') = "List(Entity(Boot))"
+type stat(p) with p: Text = "Any"
+type ${d}['k'] with d: Dict = "Any"
+type pluck(rows, 'k') with rows: List(Dict) = "List(Any)"

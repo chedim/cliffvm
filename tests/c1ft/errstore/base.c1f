@@ -1,0 +1,4 @@
+PACK base 1
+Light.word getter WHEN this.level > 0: 'on'
+Light.word getter: 'off'
+Light.bad getter: Error('layer boom')

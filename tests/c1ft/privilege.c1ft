@@ -1,0 +1,295 @@
+-- PRIVILEGE (docs/c1f-layers.md, "Privilege"): exemption from rule B (a pack writes only classes it owns or imports) ONLY. Rule A stays (only the owner defines getters and setters on a class). The grant is
+-- a write, `Pack:<name>.privileged = true`, by a privileged writer; the host records `granted_by` from the writer; the boot pack is the root of trust. Converted from tests/privilege_1143.rs; what stays
+-- Rust there is the rule-A load of a pack that was granted before it loads, and the restart that reads a stored grant back.
+-- `own` owns Cls; `plain` is a pack that imports nothing and tries to write it, several ways. The packs are in priv/.
+
+test an unprivileged pack still cannot write or create a class it does not own
+load priv/own.c1f
+load priv/plain.c1f
+given Cls:a {}
+given Trig:t {}
+write Trig:t.go = 1
+write Trig:t.mk = 1
+reads Cls:a.val = null
+-- the receipt
+eval "can't write" in str(Cls:a.refused) or "can't write" in str(Trig:t.refused) = true
+-- creation of a foreign class is dropped
+absent Cls:made
+
+test a granted pack writes and creates any class and a revoke takes it back
+load priv/own.c1f
+load priv/plain.c1f
+given Cls:a {}
+given Trig:t {}
+privileged plain = false
+-- the grant (an outside write: the person's)
+given Pack:plain {"privileged": true}
+privileged plain = true
+reads Pack:plain.granted_by = "person"
+write Trig:t.go = 1
+write Trig:t.mk = 1
+reads Cls:a.val = 1
+-- created
+reads Cls:made.val = 1
+-- revoke: a write of false; the next tries are refused again
+write Pack:plain.privileged = false
+privileged plain = false
+write Cls:a.val = 0
+write Trig:t.go = 2
+-- refused after the revoke
+reads Cls:a.val = 0
+
+test a creation of a class no pack owns works for a privileged pack only
+PACK plain 1
+Trig.mk on-setter c:
+  ALWAYS: Nobody:x.val = 1
+given Trig:t {}
+write Trig:t.mk = 1
+absent Nobody:x
+given Pack:plain {"privileged": true}
+write Trig:t.mk = 2
+reads Nobody:x.val = 1
+
+test an unprivileged pack cannot set privileged by the direct path (not owned Pack class, existing target)
+PACK evil 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x.privileged = True
+given Pack:x {}
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the computed path (not owned Pack class, existing target)
+PACK evil 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x.['privileged'] = True
+given Pack:x {}
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the constructor path (not owned Pack class, existing target)
+PACK evil 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x = Pack(privileged: True)
+given Pack:x {}
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the chain path (not owned Pack class, existing target)
+PACK evil 1
+Trig.go on-setter w:
+  ALWAYS: Hop:h.n = 1
+Hop.n on-setter v:
+  ALWAYS: Pack:x.privileged = True
+given Pack:x {}
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the direct path (not owned Pack class, new target)
+PACK evil 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x.privileged = True
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the computed path (not owned Pack class, new target)
+PACK evil 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x.['privileged'] = True
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the constructor path (not owned Pack class, new target)
+PACK evil 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x = Pack(privileged: True)
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the chain path (not owned Pack class, new target)
+PACK evil 1
+Trig.go on-setter w:
+  ALWAYS: Hop:h.n = 1
+Hop.n on-setter v:
+  ALWAYS: Pack:x.privileged = True
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the direct path (owned Pack class, existing target)
+load priv/packown.c1f
+PACK evil 1
+IMPORT packown 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x.privileged = True
+given Pack:x {}
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the computed path (owned Pack class, existing target)
+load priv/packown.c1f
+PACK evil 1
+IMPORT packown 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x.['privileged'] = True
+given Pack:x {}
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the constructor path (owned Pack class, existing target)
+load priv/packown.c1f
+PACK evil 1
+IMPORT packown 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x = Pack(privileged: True)
+given Pack:x {}
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the chain path (owned Pack class, existing target)
+load priv/packown.c1f
+PACK evil 1
+IMPORT packown 1
+Trig.go on-setter w:
+  ALWAYS: Hop:h.n = 1
+Hop.n on-setter v:
+  ALWAYS: Pack:x.privileged = True
+given Pack:x {}
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the direct path (owned Pack class, new target)
+load priv/packown.c1f
+PACK evil 1
+IMPORT packown 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x.privileged = True
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the computed path (owned Pack class, new target)
+load priv/packown.c1f
+PACK evil 1
+IMPORT packown 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x.['privileged'] = True
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the constructor path (owned Pack class, new target)
+load priv/packown.c1f
+PACK evil 1
+IMPORT packown 1
+Trig.go on-setter w:
+  ALWAYS: Pack:x = Pack(privileged: True)
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test an unprivileged pack cannot set privileged by the chain path (owned Pack class, new target)
+load priv/packown.c1f
+PACK evil 1
+IMPORT packown 1
+Trig.go on-setter w:
+  ALWAYS: Hop:h.n = 1
+Hop.n on-setter v:
+  ALWAYS: Pack:x.privileged = True
+given Trig:t {}
+write Trig:t.go = 1
+privileged x = false
+reads Pack:x.privileged = null
+
+test a pack setter grants and the grant outlives the granter
+load priv/root.c1f
+given Pack:kid {"text": "PACK kid 1\nBox.k getter: 'k'\n"}
+given Trig:t {}
+write Trig:t.go = 1
+-- root is not privileged: its grant is refused
+privileged kid = false
+given Pack:root {"privileged": true}
+write Trig:t.go = 2
+privileged kid = true
+-- the writer that wrote it
+reads Pack:kid.granted_by = "pack:root:grant-kid"
+reads Pack:kid.privileged = true
+-- the journal holds the outside writes only: the grant of a setter and `granted_by` are derived
+journal only outside
+journal lacks write granted_by
+-- revoking the granter does not revoke what it granted
+write Pack:root.privileged = false
+privileged root = false
+privileged kid = true
+-- a privileged writer revokes
+given Pack:rev {"privileged": true, "text": "PACK rev 1\nRev.go on-setter r:\n  ALWAYS: Pack:kid.privileged = False\n"}
+given Rev:r {}
+write Rev:r.go = 3
+privileged kid = false
+reads Pack:kid.granted_by = null
+
+test a removed pack leaves no stale values of its getters
+given Box:a {"w": 1, "keep": "me"}
+given Pack:mine {"text": "PACK mine 1\nBox.label getter: 'l' + str(this.w)\nBox.size getter: this.w * 10\n"}
+reads Box:a.label = "l1"
+reads Box:a.size = 10
+write Pack:mine.text = ""
+-- the getter's value is cleared
+reads Box:a.label = null
+reads Box:a.size = null
+-- plain properties stay
+reads Box:a.w = 1
+reads Box:a.keep = "me"
+-- and the store row
+row Box:a lacks label
+-- journal-neutral
+journal lacks write label
+journal lacks write size
+
+test a getter another pack still defines is kept when a pack is removed
+given Box:a {"w": 1}
+given Pack:a {"text": "PACK a 1\nBox.label getter: 'a'\n"}
+given Pack:b {"text": "PACK b 1\nIMPORT a 1\nBox.size getter: 1\n"}
+write Pack:b.text = ""
+reads Box:a.size = null
+reads Box:a.label = "a"
+
+test the journal replays a grant and ends in the same privilege state
+load priv/root.c1f
+given Pack:kid {"text": "PACK kid 1\nBox.k getter: 'k'\n"}
+given Pack:root {"privileged": true}
+given Trig:t {}
+write Trig:t.go = 1
+privileged kid = true
+privileged root = true
+replay
+privileged kid = true
+privileged root = true
+reads Pack:kid.privileged = true
+reads Pack:kid.granted_by = "pack:root:grant-kid"
+same all

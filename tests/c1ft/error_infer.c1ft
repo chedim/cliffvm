@@ -1,0 +1,41 @@
+-- `Error` in the static inference (#1143, docs/c1f-error.md section (d)): Error is a KIND (not a null flag, never stripped by `or`); an operation on a value that may be an Error may be an Error; `x is Error` and `why(x)` read it without; the failure sites type as `T | Error`. Converted from tests/error_infer_1143.rs; what stays Rust there is the per-pack getter table.
+
+test an error constructor is the error kind and the type text reads back
+type Error('x') = "Error"
+type x with x: Int? | Error = "(Int|Error)?"
+type x with x: Error = "Error"
+type 1 if c else Error('x') with c: Bool = "Int|Error"
+
+test a cast that may fail is its type or error
+type Int(x) with x: Text = "Int|Error"
+type Int(x) with x: Int = "Int"
+type Int(x) with x: Int? = "Int?"
+type Int(x) with x: Text? = "(Int|Error)?"
+type Int(x) with x: Any = "(Int|Error)?"
+
+test an operation on a value that may be an error may be an error
+type x + 1 with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "Int|Error"
+type -x with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "Int|Error"
+type l[0] with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "(Int|Error)?"
+type len(t) with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "Int|Error"
+type lower(t) with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "Text|Error"
+type 1 if c else 2 with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "Int|Error"
+type x == 1 with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "Bool|Error"
+type not c with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "Bool|Error"
+type [y for y in l] with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = "List(Int)|Error"
+findings x + 1 with x: Int | Error, l: List(Int) | Error, t: Text | Error, c: Bool | Error = 0
+
+test is and why and a null test read an error without propagating
+type x is Error with x: Int | Error = "Bool"
+type x is not Error with x: Int | Error = "Bool"
+type x == None with x: Int | Error = "Bool"
+type why(x) with x: Int | Error = "Any"
+
+test the class and text of a reason read without a finding
+findings why(x).cls with x: Int | Error = 0
+findings why(x).text with x: Int | Error = 0
+findings why(x) is Refused with x: Int | Error = 0
+
+test or is a default that never hides an error
+type x or 0 with x: Int? | Error = "Int|Error"
+type x or 0 with x: Int? = "Int"

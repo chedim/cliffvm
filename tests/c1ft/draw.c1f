@@ -1,0 +1,7 @@
+PACK draw 1
+Trig.go on-setter w:
+  ALWAYS: Ghost:made.val = 1
+Trig.mk on-setter c:
+  ALWAYS: Cls:made.val = 1
+Trig.ex on-setter e:
+  ALWAYS: Ghost:old.val = 1
