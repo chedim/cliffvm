@@ -19,7 +19,6 @@ pub mod fields;
 pub mod link;
 #[cfg(all(unix, feature = "store"))]
 pub mod peers;
-pub mod getters;
 pub mod translate;
 pub mod vm;
 pub mod plan;
