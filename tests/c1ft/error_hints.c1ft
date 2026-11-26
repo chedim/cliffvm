@@ -1,0 +1,14 @@
+-- A load error says what to write instead (#1143): the language has no sets, lambdas or computed dict keys, and each refusal names the form it has. Memo met each of these by failing.
+
+test a set is refused and a list is named
+eval {1, 2} = error: use a list
+eval {1, 2} = error: distinct
+
+test a lambda is refused and a comprehension or sort_by is named
+eval (lambda a: a) = error: no functions
+eval (lambda a: a) = error: comprehension
+
+test a dict key that is not a literal string is refused and the read by a computed key is named
+let k = 'a'
+eval {k: 1} = error: literal string
+eval {k: 1} = error: d[k]
