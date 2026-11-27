@@ -168,6 +168,27 @@ fn for_head(rest: &str, at: usize) -> Result<(String, String, Option<String>), S
     Ok((var.to_string(), it.to_string(), if body.is_empty() { None } else { Some(body.to_string()) }))
 }
 
+/// A write target written as a bare id with a `-` in it (`Pin:tool-calls`): the `-` is minus, so it names no entity. Quotes, brackets and parentheses (a computed identity) are left alone.
+fn dashed_id(tgt: &str) -> Option<&str> {
+    let mut depth = 0i32;
+    let mut quote: Option<char> = None;
+    let mut seen_colon = false;
+    for c in tgt.chars() {
+        match quote {
+            Some(q) => { if c == q { quote = None; } }
+            None => match c {
+                '\'' | '"' => quote = Some(c),
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth -= 1,
+                ':' if depth == 0 => seen_colon = true,
+                '-' if depth == 0 && seen_colon => return Some(tgt),
+                _ => {}
+            },
+        }
+    }
+    None
+}
+
 fn statement(s: &str, at: usize) -> Result<W, String> {
     let eq = assign_eq(s).ok_or(format!("line {}: expected `<target>.<field> = <expr>`, got `{}`", at, s))?;
     let (lhs, rhs) = (s[..eq].trim(), s[eq + 1..].trim());
@@ -192,6 +213,9 @@ fn statement(s: &str, at: usize) -> Result<W, String> {
     };
     let (tgt, field) = (&lhs[..d], &lhs[d + 1..]);
     if tgt.is_empty() || field.is_empty() { return Err(format!("line {}: bad target `{}`", at, lhs)); }
+    if let Some(id) = dashed_id(tgt) {
+        return Err(format!("line {}: the target `{}` has a `-` in an entity id, and a `-` reads as minus; write the id as a text in braces: `${{'{}'}}.{} = ...`", at, tgt, id, field));
+    }
     Ok((tgt.into(), field.into(), rhs.into()))
 }
 

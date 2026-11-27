@@ -42,3 +42,10 @@ eval [1, 2, 3] + [1, 2] = error: do not line up
 
 test await and yield are not called a lambda
 eval await x = error: do not exist here
+
+test an entity id with a dash in a write target is refused and the quoted form is named
+PACK t 1
+Box.go on-setter t:
+  ALWAYS:
+    Pin:tool-calls.text = 'x'
+error: reads as minus
