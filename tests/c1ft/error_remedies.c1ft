@@ -49,3 +49,11 @@ Box.go on-setter t:
   ALWAYS:
     Pin:tool-calls.text = 'x'
 error: reads as minus
+
+test a dollar target with no property is not told to write on this
+PACK t 1
+Box.go on-setter t:
+  ALWAYS:
+    FOR i IN ['Thing:x']:
+      ${i} = None
+error: parenthesised

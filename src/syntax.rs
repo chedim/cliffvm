@@ -209,6 +209,9 @@ fn statement(s: &str, at: usize) -> Result<W, String> {
                 },
             }
         }
+        if lhs.starts_with('$') {
+            return Err(format!("line {}: `{}` is a read of the entity an id names, not a target: to remove that entity write `(<expr>) = None` (a computed identity is a parenthesised expression), to set a property of it write `{}.<prop> = <value>`", at, lhs, lhs));
+        }
         return Err(format!("line {}: `{}` needs a target: write `this.{}`", at, lhs, lhs));
     };
     let (tgt, field) = (&lhs[..d], &lhs[d + 1..]);
