@@ -424,7 +424,8 @@ impl P {
         r
     }
     fn expr_inner(&mut self) -> Result<Node, Err> {
-        if self.is_kw("lambda") || self.is_kw("await") || self.is_kw("yield") { return Err("not allowed in an expression: Lambda (there are no functions: write a comprehension [f(x) for x in xs], or sort_by(rows, key))".into()); }
+        if self.is_kw("await") || self.is_kw("yield") { return Err("`await` and `yield` do not exist here: a value is computed in one evaluation, and a write that starts an effect has its receipt in a later round (read <entity>.<verb>_result)".into()); }
+        if self.is_kw("lambda") { return Err("not allowed in an expression: Lambda (there are no functions: write a comprehension [f(x) for x in xs], or sort_by(rows, key))".into()); }
         let e = self.or_test()?;
         if !self.is_kw("if") { return Ok(e); }
         self.next();
@@ -522,7 +523,9 @@ impl P {
         let mut a = self.factor()?;
         loop {
             let op = if self.is_p("*") { Op::Mul } else if self.is_p("/") { Op::Div }
-                     else if self.is_p("//") || self.is_p("%") || self.is_p("@") { return Err("not allowed in an expression: BinOp".into()); }
+                     else if self.is_p("//") { return Err("`//` is not an operator here: arithmetic is + - * /; Int(a / b) drops the fraction".into()); }
+                     else if self.is_p("%") { return Err("`%` is not an operator here: arithmetic is + - * /; the remainder of a by b is a - Int(a / b) * b".into()); }
+                     else if self.is_p("@") { return Err("`@` is not an operator here: arithmetic is + - * /; the dot product of two vectors is dot(a, b)".into()); }
                      else { break };
             self.next();
             let b = self.factor()?;
@@ -532,9 +535,10 @@ impl P {
     }
     fn factor(&mut self) -> Result<Node, Err> {
         if self.is_p("-") { self.next(); self.nest()?; let o = self.factor(); self.depth -= 1; return Ok(Node::Neg(Box::new(o?))); }
-        if self.is_p("+") || self.is_p("~") { return Err("not allowed in an expression: UnaryOp".into()); }
+        if self.is_p("+") { return Err("a unary `+` is not an operator here: write the value itself (`5`, not `+5`)".into()); }
+        if self.is_p("~") { return Err("`~` is not an operator here: use `not` for a flag; arithmetic is + - * /".into()); }
         let a = self.primary()?;
-        if self.is_p("**") { return Err("not allowed in an expression: BinOp".into()); }
+        if self.is_p("**") { return Err("`**` is not an operator here: arithmetic is + - * /; a power is a repeated product (a * a)".into()); }
         Ok(a)
     }
     fn primary(&mut self) -> Result<Node, Err> {
@@ -547,14 +551,14 @@ impl P {
                     _ => return Err("not an expression: attribute".into()),
                 }
             } else if self.is_p("(") {
-                let f = match a { Node::Name(ref n) => n.clone(), Node::Const(V::None) => "None".to_string(), _ => return Err("only the built-ins may be called".into()) };
+                let f = match a { Node::Name(ref n) => n.clone(), Node::Const(V::None) => "None".to_string(), Node::Attr(..) => return Err("there are no methods: call a built-in as a function, `lower(x)` and not `x.lower()`; the built-ins are listed in docs/cliffvm.md".into()), _ => return Err("only the built-ins may be called: a call is `name(args)` with the name of a built-in".into()) };
                 self.next();
                 let mut args = Vec::new();
                 let mut named: Vec<(String, Node)> = Vec::new();
                 while !self.is_p(")") {
                     if self.is_p("*") || self.is_p("**") { return Err("not allowed in an expression: Starred".into()); }
                     if matches!(self.peek(), Tok::Name(_)) && matches!(self.t.get(self.i + 1), Some(Tok::P("="))) {
-                        return Err("only the built-ins may be called".into());
+                        return Err(format!("arguments are positional: write `{}(value)`, not `{}(name=value)` (`name: value` is for a constructor)", f, f));
                     }
                     // `name: value`: a constructor's argument
                     if let (Tok::Name(n), Some(Tok::P(":"))) = (self.peek().clone(), self.t.get(self.i + 1)) {
@@ -677,12 +681,22 @@ impl P {
     }
 }
 
+/// What follows a complete expression and should not.
+fn trailing(t: &Tok) -> String {
+    match t {
+        Tok::P(")") | Tok::P("]") | Tok::P("}") => "not an expression: a closing bracket with no opener".into(),
+        Tok::P("&") | Tok::P("|") => "not an expression: write and / or, not & or |".into(),
+        Tok::Name(_) | Tok::Int(_) | Tok::Float(_) | Tok::Str(_) | Tok::Ent(_) => "not an expression: two values in a row; put an operator (+ - * /) or a comma between them".into(),
+        _ => "not an expression: trailing input after a complete expression".into(),
+    }
+}
+
 /// A constructor's class and named arguments when `src` is exactly `Class(name: value, ...)`; the reason when it is not.
 pub fn parse_ctor(src: &str) -> Result<(String, Vec<(String, Node)>), String> {
     let toks = lex(src, false)?;
     let mut p = P { t: toks, i: 0, depth: 0, block: false };
     let mut n = p.expr()?;
-    if *p.peek() != Tok::End { return Err("not an expression: trailing input".into()); }
+    if *p.peek() != Tok::End { return Err(trailing(p.peek())); }
     match &mut n {
         Node::Ctor(c, a) => Ok((std::mem::take(c), std::mem::take(a))),
         Node::Call(f, _) => Err(format!("`{}(...)` takes named arguments to make an entity: `{}(name: value, ...)`", f, f)),
@@ -700,7 +714,7 @@ fn parse_with(src: &str, block: bool) -> Result<Node, Err> {
     let toks = lex(src, block)?;
     let mut p = P { t: toks, i: 0, depth: 0, block };
     let e = if block { p.block_body()? } else { p.expr()? };
-    if *p.peek() != Tok::End { return Err("not an expression: trailing input".into()); }
+    if *p.peek() != Tok::End { return Err(trailing(p.peek())); }
     Ok(e)
 }
 
@@ -891,7 +905,7 @@ fn vec_of(v: &V) -> Result<Vec<f64>, Err> {
 }
 
 fn num(v: &V) -> Result<&V, Err> {
-    match v { V::Int(_) | V::Float(_) => Ok(v), _ => Err(format!("not a number: {:?}", v)) }
+    match v { V::Int(_) | V::Float(_) => Ok(v), _ => Err(format!("expected a number, got a {}", kind_word(v))) }
 }
 
 fn floats(v: Vec<f64>) -> V { V::List(v.into_iter().map(V::Float).collect()) }
@@ -902,7 +916,7 @@ fn vec_arith(op: Op, a: &V, b: &V) -> Result<V, Err> {
     let xs = matches!(a, V::List(_));
     let ys = matches!(b, V::List(_));
     let n = if x.len() == y.len() { x.len() } else if x.len() == 1 { y.len() } else if y.len() == 1 { x.len() } else {
-        return Err("vector arithmetic: operands could not be broadcast together".into());
+        return Err(format!("vector arithmetic: the lists do not line up, have {} and {} numbers (one list and one number, or two lists of one length)", x.len(), y.len()));
     };
     let _ = (xs, ys);
     let mut out = Vec::with_capacity(n);
@@ -956,9 +970,9 @@ pub fn dist(a: &[f64], b: &[f64]) -> f64 {
 
 fn extreme(args: &[V], want: std::cmp::Ordering) -> Result<V, Err> {
     let items: Vec<V> = if args.len() == 1 {
-        match &args[0] { V::List(l) => l.clone(), V::Str(s) => s.chars().map(|c| V::Str(c.to_string())).collect(), V::Dict(d) => d.iter().map(|(k, _)| V::Str(k.clone())).collect(), _ => return Err("object is not iterable".into()) }
+        match &args[0] { V::List(l) => l.clone(), V::Str(s) => s.chars().map(|c| V::Str(c.to_string())).collect(), V::Dict(d) => d.iter().map(|(k, _)| V::Str(k.clone())).collect(), v => return Err(format!("min/max over one value takes a list, a text or a dict, got a {}", kind_word(v))) }
     } else { args.to_vec() };
-    if items.is_empty() { return Err("arg is an empty sequence".into()); }
+    if items.is_empty() { return Err("min/max of an empty list: guard it with `if xs` (or `len(xs) > 0`)".into()); }
     let mut best = items[0].clone();
     for x in &items[1..] {
         match py_cmp(x, &best) { Some(o) if o == want => best = x.clone(), Some(_) => {}, None => return Err("'<' not supported".into()) }
@@ -986,10 +1000,10 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
         // Error('reason') makes a failure: the remedy is part of the text (docs/c1f-error.md)
         "Error" => { argn(1)?; Ok(V::Error(Reason::of(&a[0]))) }
         // None is a class like any other: None('why') constructs a null that carries its reason (None() says "null")
-        "None" => Ok(V::Nil(match a.len() { 0 => "null".into(), 1 => Reason::of(&a[0]), _ => return Err("None: takes one reason".into()) })),
+        "None" => Ok(V::Nil(match a.len() { 0 => "null".into(), 1 => Reason::of(&a[0]), _ => return Err("None(reason) takes at most one reason (a text)".into()) })),
         // why(x): the reason a null carries as text (`absent ...`, `error: ...`, `pending: ...`, the text of None('...')); None when x is not a reasoned null
         "why" => { argn(1)?; Ok(match &a[0] { V::Nil(r) | V::Error(r) => r.value(), _ => V::None }) }
-        "dot" => { argn(2)?; let (x, y) = (vec_of(&a[0])?, vec_of(&a[1])?); if x.len() != y.len() { return Err("dot: shapes not aligned".into()); } Ok(V::Float(x.iter().zip(&y).map(|(p, q)| p * q).sum())) }
+        "dot" => { argn(2)?; let (x, y) = (vec_of(&a[0])?, vec_of(&a[1])?); if x.len() != y.len() { return Err(format!("dot: the vectors do not line up, have {} and {} numbers", x.len(), y.len())); } Ok(V::Float(x.iter().zip(&y).map(|(p, q)| p * q).sum())) }
         "norm" => { argn(1)?; Ok(V::Float(norm(&vec_of(&a[0])?))) }
         "distance" => { argn(2)?; Ok(V::Float(dist(&vec_of(&a[0])?, &vec_of(&a[1])?))) }
         "unit" => { argn(1)?; let x = vec_of(&a[0])?; let n = norm(&x); Ok(floats(if n > 1e-12 { x.iter().map(|v| v / n).collect() } else { x })) }
@@ -1054,10 +1068,10 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
             if !(x > 0.0) || !x.is_finite() { return Err(format!("log(x): x is a positive number, got {}", py_str(&a[0]))); }
             Ok(V::Float(x.ln() as f32 as f64))
         }
-        "abs" => { argn(1)?; match &a[0] { V::Int(i) => Ok(V::Int(i.abs())), V::Float(x) => Ok(V::Float(x.abs())), V::Bool(b) => Ok(V::Int(*b as i64)), _ => Err("bad operand type for abs()".into()) } }
-        "min" => { if a.is_empty() { return Err("min expected 1 argument".into()); } extreme(&a, std::cmp::Ordering::Less) }
-        "max" => { if a.is_empty() { return Err("max expected 1 argument".into()); } extreme(&a, std::cmp::Ordering::Greater) }
-        "len" => { argn(1)?; match &a[0] { V::List(l) => Ok(V::Int(l.len() as i64)), V::Str(t) => Ok(V::Int(t.chars().count() as i64)), V::Dict(d) => Ok(V::Int(d.len() as i64)), V::None | V::Nil(_) => Ok(V::Int(0)), v => Err(format!("object of type {:?} has no len()", v)) } }
+        "abs" => { argn(1)?; match &a[0] { V::Int(i) => Ok(V::Int(i.abs())), V::Float(x) => Ok(V::Float(x.abs())), V::Bool(b) => Ok(V::Int(*b as i64)), v => Err(format!("abs(x) takes a number, got a {}", kind_word(v))) } }
+        "min" => { if a.is_empty() { return Err("min(xs) takes a list (or several values): min([a, b]) or min(a, b)".into()); } extreme(&a, std::cmp::Ordering::Less) }
+        "max" => { if a.is_empty() { return Err("max(xs) takes a list (or several values): max([a, b]) or max(a, b)".into()); } extreme(&a, std::cmp::Ordering::Greater) }
+        "len" => { argn(1)?; match &a[0] { V::List(l) => Ok(V::Int(l.len() as i64)), V::Str(t) => Ok(V::Int(t.chars().count() as i64)), V::Dict(d) => Ok(V::Int(d.len() as i64)), V::None | V::Nil(_) => Ok(V::Int(0)), v => Err(format!("len(x) takes a list, a text or a dict, got a {}", kind_word(v))) } }
         // ---- text (the banner port; plain functions, no new syntax) ----
         "lower" => { argn(1)?; Ok(V::Str(text_of(&a[0])?.to_lowercase())) }
         "strip" => { argn(1)?; Ok(V::Str(text_of(&a[0])?.trim().to_string())) }
@@ -1286,7 +1300,7 @@ fn call(f: &str, a: Vec<V>, w: &dyn World) -> Result<V, Err> {
             let e = match &a[0] { V::Ent(e) | V::Str(e) => e.clone(), _ => return Ok(V::List(vec![])) };
             Ok(V::List(w.refs(&e, &py_str(&a[1])).into_iter().map(V::Ent).collect()))
         }
-        _ => match w.host(f, &a) { Some(r) => r, None => Err("only the built-ins may be called".into()) },
+        _ => match w.host(f, &a) { Some(r) => r, None => Err(format!("`{}` is not a built-in function; the built-ins are listed in docs/cliffvm.md", f)) },
     }
 }
 
@@ -1304,7 +1318,7 @@ fn epoch_of(v: &V) -> Option<f64> {
 }
 
 fn text_of(v: &V) -> Result<String, Err> {
-    match v { V::Str(s) => Ok(s.clone()), V::None | V::Nil(_) => Ok(String::new()), V::Error(r) => Err(r.text()), V::Ent(e) => Ok(reason_text(e).unwrap_or_else(|| e.clone())), V::List(_) | V::Dict(_) => Err("expected text".into()), v => Ok(py_str(v)) }
+    match v { V::Str(s) => Ok(s.clone()), V::None | V::Nil(_) => Ok(String::new()), V::Error(r) => Err(r.text()), V::Ent(e) => Ok(reason_text(e).unwrap_or_else(|| e.clone())), V::List(_) | V::Dict(_) => Err(format!("expected a text, got a {}", kind_word(v))), v => Ok(py_str(v)) }
 }
 
 pub fn py_str(v: &V) -> String {
@@ -1340,6 +1354,9 @@ fn is_kind(v: &V, name: &str, w: &dyn World) -> bool {
         _ => false,
     }
 }
+
+/// The kind of a value as a reader says it: a number is a number whether it has a fraction or not.
+fn kind_word(v: &V) -> &'static str { match v { V::Int(_) | V::Float(_) => "number", _ => kind_of(v) } }
 
 fn kind_of(v: &V) -> &'static str {
     match v { V::None | V::Nil(_) => "none", V::Error(_) => "error", V::Bool(_) => "bool", V::Int(_) => "int", V::Float(_) => "float", V::Str(_) => "text",
@@ -1446,7 +1463,7 @@ fn ev_attr(b: &Node, a: &String, env: &Env, w: &dyn World, m: &mut Meter) -> Res
         V::Nil(r) => Ok(V::Nil(r)),
         e @ V::Error(_) => Ok(e),
         V::None => Ok(V::absent(format!(".{} of an absent value", a))),
-        _ => Err("attributes are read on entities only".into()),
+        v => Err(format!("attributes are read on entities only, and this is a {}; a dict is read by key: d['{}']", kind_word(&v), a)),
     }
 }
 
@@ -1507,7 +1524,7 @@ fn ev_neg(a: &Node, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> {
         V::Int(i) => Ok(V::Int(-i)),
         V::Float(f) => Ok(V::Float(-f)),
         e @ V::Error(_) => Ok(e),
-        v => if let Some(n) = null_of(&[&v], "negation") { Ok(n) } else { Err(format!("not a number: {:?}", v)) },
+        v => if let Some(n) = null_of(&[&v], "negation") { Ok(n) } else { Err(format!("negation: expected a number, got a {}", kind_word(&v))) },
     }
 }
 
@@ -1585,7 +1602,7 @@ fn ev_compare(a: &Node, ops: &[(Cmp, Node)], env: &Env, w: &dyn World, m: &mut M
 
 #[inline(never)]
 fn ev_comp(elt: &Node, var: &String, iter: &Node, cond: &Option<Box<Node>>, env: &Env, w: &dyn World, m: &mut Meter) -> Result<V, Err> {
-            let xs = match ev(iter, env, w, m)? { V::List(l) => l, V::None | V::Nil(_) => vec![], e @ V::Error(_) => return Ok(e), v => return Err(format!("can't iterate over {:?}", v)) };
+            let xs = match ev(iter, env, w, m)? { V::List(l) => l, V::None | V::Nil(_) => vec![], e @ V::Error(_) => return Ok(e), v => return Err(format!("a comprehension runs over a list, got a {}", kind_word(&v))) };
             let mut out = Vec::new();
             let mut env2 = Env::child(env);   // a scope over the enclosing one: the enclosing bindings (a local holding a long list) are looked up, never copied per iteration
             env2.vars.push((var.clone(), V::None));
@@ -1608,7 +1625,7 @@ fn ev_fold(init: &Node, step: &Node, var: &String, iter: &Node, keep: &Option<Bo
     if var == "acc" { return Err("fold: `acc` is the value so far; name the loop's item another way".into()); }
     let mut acc = ev(init, env, w, m)?;
     if let V::Error(_) = acc { return Ok(acc); }
-    let xs = match ev(iter, env, w, m)? { V::List(l) => l, V::None | V::Nil(_) => vec![], e @ V::Error(_) => return Ok(e), v => return Err(format!("fold: can't iterate over {:?}", v)) };
+    let xs = match ev(iter, env, w, m)? { V::List(l) => l, V::None | V::Nil(_) => vec![], e @ V::Error(_) => return Ok(e), v => return Err(format!("fold runs over a list, got a {}", kind_word(&v))) };
     let mut env2 = Env::child(env);
     env2.vars.push(("acc".to_string(), V::None));
     env2.vars.push((var.clone(), V::None));

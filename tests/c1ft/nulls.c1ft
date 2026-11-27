@@ -40,8 +40,8 @@ eval p = null
 
 test an error that is not about a null is still an error
 let n = 3
-eval len(3) = error: has no len
-eval 'a' + 1 = error: not a number
+eval len(3) = error: takes a list, a text or a dict
+eval 'a' + 1 = error: expected a number, got a text
 eval n.x = error: attributes are read on entities only
 
 test the silent coercions are unchanged until step three
