@@ -179,6 +179,8 @@ fn inside_one_layer_a_double_write_stays_the_error() {
     put(&mut c, &mut f, "Light:a", "level", json!(1));
     assert_eq!(c.docs["Box:b"].props["v"], json!(1));
     assert!(f.refusals.iter().any(|r| r["reason"].as_str().unwrap_or("").contains("already written this round")), "{:?}", f.refusals);
+    // the reason says what to do instead (#1143, the sweep of 2026-11-26)
+    assert!(f.refusals.iter().any(|r| r["reason"].as_str().unwrap_or("").contains("one write per property in a round")), "{:?}", f.refusals);
 }
 
 #[test]

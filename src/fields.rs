@@ -1290,7 +1290,7 @@ impl Fields {
         let check = check && !Self::is_driver_verb(core, eid, prop);
         if check && !self.visited.insert((eid.to_string(), prop.to_string())) {
             // revisit in this round: refuse BEFORE applying
-            let reason = format!("loop: ({}, {}) already written this round by the field; refused {} by {}", eid, prop, new, writer);
+            let reason = format!("loop: ({}, {}) already written this round by the field; refused {} by {}. There is one write per property in a round: compute the final value first and write it once, or write the second value in a later call", eid, prop, new, writer);
             self.refusals.push(json!({"eid": eid, "prop": prop, "refused": new, "writer": writer, "reason": reason}));
             *seq += 1;
             let r = Write { eid: eid.into(), prop: "refused".into(), new: json!(reason), old: J::Null, writer: "field:loop-refused".into(), chain: json!({}), seq: *seq };
